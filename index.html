@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cebarti Manor Prototype</title>
+    <link rel="preload" href="bg_cebartimanor_ext.png" as="image" />
+    <link rel="preload" href="bg_wallpaper.png" as="image" />
+    <link rel="preload" href="bg_room_well.png" as="image" />
+    <link rel="preload" href="bg_corridor.png" as="image" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="game" class="game">
+      <div id="background" class="game__background" role="img" aria-label=""></div>
+      <div id="content" class="game__content" aria-live="polite"></div>
+      <div id="fade-overlay" class="fade-overlay" aria-hidden="true"></div>
+      <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>
