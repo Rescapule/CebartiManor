@@ -8,6 +8,128 @@
     victory: "bg_victoryscreen.png",
   };
 
+  const playerCharacter = {
+    key: "playerGhost",
+    name: "Player Ghost",
+    src: "cs_player_ghost1.png",
+    alt: "The player's ghostly form glimmering with cerulean ectoplasm.",
+    facing: "right",
+  };
+
+  const enemySprites = [
+    {
+      key: "corridorMimic",
+      name: "Corridor Mimic",
+      src: "cs_enemy_corridormimic1.png",
+      alt: "A corridor mimic unfurling a maw of warped floorboards.",
+      facing: "left",
+    },
+    {
+      key: "greedyShade",
+      name: "Greedy Shade",
+      src: "cs_enemy_greedyshade1.png",
+      alt: "A hunched shade clutching pilfered relics to its chest.",
+      facing: "left",
+    },
+    {
+      key: "jesterWraith",
+      name: "Jester Wraith",
+      src: "cs_enemy_jesterwraith1.png",
+      alt: "A wraith clad in jester bells with a razor grin.",
+      facing: "left",
+    },
+    {
+      key: "mourningChoir",
+      name: "Mourning Choir",
+      src: "cs_enemy_mourningchoir1.png",
+      alt: "A trio of veiled mourners singing a spectral hymn.",
+      facing: "left",
+    },
+    {
+      key: "oathbreakerKnight",
+      name: "Oathbreaker Knight",
+      src: "cs_enemy_oathbreakerknight1.png",
+      alt: "A fallen knight wreathed in oathbound chains.",
+      facing: "left",
+    },
+    {
+      key: "possessedArmor",
+      name: "Possessed Armor",
+      src: "cs_enemy_possessedarmor1.png",
+      alt: "Vacant armor animated by violet specters.",
+      facing: "left",
+    },
+    {
+      key: "stygianHound",
+      name: "Stygian Hound",
+      src: "cs_enemy_stygianhound1.png",
+      alt: "A spectral hound with abyssal flame eyes.",
+      facing: "left",
+    },
+    {
+      key: "wailingWidow",
+      name: "Wailing Widow",
+      src: "cs_enemy_wailingwidow1.png",
+      alt: "A widow draped in tattered mourning veils.",
+      facing: "left",
+    },
+  ];
+
+  const bossSprites = [
+    {
+      key: "archivist",
+      name: "The Archivist",
+      src: "cs_boss_archivist1.png",
+      alt: "The Archivist boss cloaked in luminous script.",
+      facing: "left",
+    },
+    {
+      key: "floodBride",
+      name: "The Flood Bride",
+      src: "cs_boss_floodbride1.png",
+      alt: "The Flood Bride boss trailing drowned lace and tidewater.",
+      facing: "left",
+    },
+  ];
+
+  const merchantSprites = [
+    {
+      key: "bellringer",
+      name: "Bellringer",
+      src: "cs_npc_bellringer1.png",
+      alt: "A spectral bellringer merchant cradling chains of chimes.",
+      facing: "left",
+    },
+    {
+      key: "candleman",
+      name: "Candleman",
+      src: "cs_npc_candleman1.png",
+      alt: "A waxen vendor crowned with flickering candles.",
+      facing: "left",
+    },
+    {
+      key: "collector",
+      name: "Collector",
+      src: "cs_npc_collector1.png",
+      alt: "A cloaked collector weighed down by curiosities.",
+      facing: "left",
+    },
+    {
+      key: "helenCebarti",
+      name: "Helen Cebarti",
+      src: "cs_npc_helencebarti1.png",
+      alt: "Helen Cebarti, poised behind a spectral negotiating table.",
+      facing: "left",
+    },
+    {
+      key: "ragpicker",
+      name: "Ragpicker",
+      src: "cs_npc_ragpicker1.png",
+      alt: "A ragpicker merchant draped in salvaged fabrics.",
+      facing: "left",
+    },
+  ];
+
   const roomDefinitions = [
     {
       key: "well",
@@ -112,6 +234,8 @@
     roomHistory: [],
     currentRoomNumber: 0,
     currentRoomKey: null,
+    currentEncounterType: null,
+    currentEncounter: null,
   };
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
@@ -182,6 +306,8 @@
     state.currentRoomNumber = 0;
     state.currentRoomKey = null;
     state.corridorRefreshes = 0;
+    state.currentEncounterType = null;
+    state.currentEncounter = null;
   }
 
   function clearRunState() {
@@ -193,6 +319,8 @@
     state.lastRunScreen = null;
     state.hasSave = false;
     state.inRun = false;
+    state.currentEncounterType = null;
+    state.currentEncounter = null;
   }
 
   function shuffle(array) {
@@ -217,7 +345,7 @@
     return categories.map((category) => ({ ...category }));
   }
 
-  async function goToRoom(ctx, roomKey) {
+  async function goToRoom(ctx, roomKey, options = {}) {
     const room = roomMap.get(roomKey);
     if (!room) {
       ctx.showToast("That path is sealed.");
@@ -233,10 +361,17 @@
     ctx.state.lastRunScreen = "room";
     ctx.state.corridorRefreshes = 0;
 
+    const encounterType = options.encounterType || null;
+    ctx.state.currentEncounterType = encounterType;
+    const encounter = getEncounterForType(encounterType);
+    ctx.state.currentEncounter = encounter;
+
     await ctx.transitionTo("room", {
       room,
       background: room.background,
       ariaLabel: room.ariaLabel,
+      encounterType,
+      encounter,
     });
     ctx.showToast(`You enter ${room.name}.`);
   }
@@ -251,7 +386,14 @@
     ctx.state.lastRunScreen = "foyer";
     ctx.state.corridorRefreshes = 0;
 
-    await ctx.transitionTo("foyer");
+    ctx.state.currentEncounterType = "boss";
+    const encounter = getEncounterForType("boss");
+    ctx.state.currentEncounter = encounter;
+
+    await ctx.transitionTo("foyer", {
+      encounterType: "boss",
+      encounter,
+    });
     ctx.showToast("The foyer looms ahead.");
   }
 
@@ -427,12 +569,17 @@
       render(ctx) {
         const wrapper = createElement("div", "screen screen--well");
 
+        ctx.state.currentEncounterType = null;
+        ctx.state.currentEncounter = null;
+
         const title = createElement("h2", "screen__title", "The Styx Well");
         const subtitle = createElement(
           "p",
           "screen__subtitle",
           "Draft three memories to define this run's starting action pool."
         );
+
+        const wellScene = createWellScene();
 
         const buttonRow = createElement("div", "button-row");
         for (let i = 0; i < 3; i += 1) {
@@ -461,7 +608,7 @@
         });
         footer.appendChild(continueButton);
 
-        wrapper.append(title, subtitle, buttonRow, footer);
+        wrapper.append(title, subtitle, wellScene, buttonRow, footer);
         return wrapper;
       },
     },
@@ -474,6 +621,9 @@
         if (ctx.options && ctx.options.fromRoom) {
           ctx.state.currentRoomKey = null;
         }
+
+        ctx.state.currentEncounterType = null;
+        ctx.state.currentEncounter = null;
 
         const wrapper = createElement("div", "screen screen--corridor");
         const availableRooms = Array.isArray(ctx.state.roomPool)
@@ -558,7 +708,7 @@
             );
             doorButton.addEventListener("click", async () => {
               doorButton.disabled = true;
-              await goToRoom(ctx, roomKey);
+              await goToRoom(ctx, roomKey, { encounterType: category.key });
             });
             doorMap.appendChild(doorChoice);
           });
@@ -592,6 +742,9 @@
       key: "room",
       render(ctx) {
         const roomData = ctx.options?.room;
+        const encounterType =
+          ctx.options?.encounterType || ctx.state.currentEncounterType;
+        const encounter = ctx.options?.encounter || ctx.state.currentEncounter;
         const wrapper = createElement("div", "screen screen--room");
         const roomNumber = Math.max(ctx.state.currentRoomNumber, 1);
         const tracker = createRunTracker(
@@ -617,16 +770,25 @@
             await ctx.transitionTo("corridor", { refresh: true });
           });
           footer.appendChild(backButton);
+          ctx.state.currentEncounterType = null;
+          ctx.state.currentEncounter = null;
           wrapper.append(tracker, title, subtitle, footer);
           return wrapper;
         }
 
         const title = createElement("h2", "screen__title", roomData.name);
-        const subtitle = createElement("p", "screen__subtitle", roomData.description);
+        const subtitle = createElement(
+          "p",
+          "screen__subtitle",
+          roomData.description
+        );
+
+        const encounterScene = createEncounterScene({ encounter });
+
         const prompt = createElement(
           "p",
           "screen__subtitle",
-          "You secure what you can from the chamber before returning to the corridor."
+          getEncounterPrompt(encounterType, encounter)
         );
         const footer = createElement("div", "screen-footer");
         const continueButton = createElement(
@@ -638,12 +800,21 @@
           ctx.state.currentRoomKey = null;
           ctx.state.lastRunScreen = "corridor";
           ctx.state.corridorRefreshes = 0;
+          ctx.state.currentEncounterType = null;
+          ctx.state.currentEncounter = null;
           await ctx.transitionTo("corridor", { fromRoom: true });
           ctx.showToast("You slip back into the corridor.");
         });
         footer.appendChild(continueButton);
 
-        wrapper.append(tracker, title, subtitle, prompt, footer);
+        wrapper.append(
+          tracker,
+          title,
+          subtitle,
+          encounterScene.scene,
+          prompt,
+          footer
+        );
         return wrapper;
       },
     },
@@ -661,10 +832,12 @@
 
         const title = createElement("h2", "screen__title", foyerRoom.name);
         const subtitle = createElement("p", "screen__subtitle", foyerRoom.description);
+        const encounter = ctx.options?.encounter || ctx.state.currentEncounter;
+        const encounterScene = createEncounterScene({ encounter });
         const prompt = createElement(
           "p",
           "screen__subtitle",
-          "Helen Cebarti gathers her strength. This is the final stand."
+          getEncounterPrompt("boss", encounter)
         );
 
         const footer = createElement("div", "screen-footer");
@@ -678,11 +851,20 @@
           ctx.state.hasSave = false;
           ctx.state.lastRunScreen = null;
           ctx.state.inRun = false;
+          ctx.state.currentEncounterType = null;
+          ctx.state.currentEncounter = null;
           await ctx.transitionTo("victory");
         });
         footer.appendChild(continueButton);
 
-        wrapper.append(tracker, title, subtitle, prompt, footer);
+        wrapper.append(
+          tracker,
+          title,
+          subtitle,
+          encounterScene.scene,
+          prompt,
+          footer
+        );
         return wrapper;
       },
     },
@@ -796,6 +978,203 @@
 
   function createRunTracker(text) {
     return createElement("div", "run-tracker", text);
+  }
+
+  function getRandomItem(source) {
+    if (!Array.isArray(source) || source.length === 0) {
+      return null;
+    }
+    const index = Math.floor(Math.random() * source.length);
+    return source[index];
+  }
+
+  function getEncounterPoolForType(type) {
+    switch (type) {
+      case "combat":
+      case "elite":
+        return enemySprites;
+      case "boss":
+        return bossSprites;
+      case "merchant":
+        return merchantSprites;
+      default:
+        return null;
+    }
+  }
+
+  function getEncounterForType(type) {
+    const pool = getEncounterPoolForType(type);
+    if (!pool) {
+      return null;
+    }
+    const sprite = getRandomItem(pool);
+    if (!sprite) {
+      return null;
+    }
+    const animatedTypes = new Set(["combat", "elite", "boss"]);
+    return {
+      sprite,
+      type,
+      kind:
+        type === "merchant"
+          ? "merchant"
+          : type === "boss"
+          ? "boss"
+          : "enemy",
+      animate: animatedTypes.has(type),
+      enterDelay: 2000,
+    };
+  }
+
+  function shouldReduceMotion() {
+    if (typeof window === "undefined" || !window.matchMedia) {
+      return false;
+    }
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function createCharacterElement(sprite, options = {}) {
+    if (!sprite) {
+      return null;
+    }
+
+    const role = options.role || "";
+    const element = createElement("div", "character");
+    if (role) {
+      element.classList.add(`character--${role}`);
+    }
+
+    if (sprite.facing === "left") {
+      element.classList.add("character--face-left");
+    } else if (sprite.facing === "right") {
+      element.classList.add("character--face-right");
+    }
+
+    if (role === "encounter") {
+      element.classList.add("character--encounter");
+      if (!options.animate) {
+        element.classList.add("is-visible");
+      }
+    }
+
+    if (options.extraClasses) {
+      const classes = Array.isArray(options.extraClasses)
+        ? options.extraClasses
+        : [options.extraClasses];
+      classes
+        .filter((cls) => typeof cls === "string" && cls.trim().length > 0)
+        .forEach((cls) => element.classList.add(cls));
+    }
+
+    const image = document.createElement("img");
+    image.className = "character__sprite";
+    image.src = sprite.src;
+    image.alt = sprite.alt || sprite.name || "";
+    image.decoding = "async";
+    image.loading = options.lazy === false ? "eager" : "lazy";
+    element.appendChild(image);
+
+    if (sprite.name) {
+      const label = createElement("span", "character__label", sprite.name);
+      element.appendChild(label);
+    }
+
+    return { element, image };
+  }
+
+  function createEncounterScene({ encounter } = {}) {
+    const scene = createElement("div", "room-scene");
+    const playerSide = createElement(
+      "div",
+      "room-scene__side room-scene__side--player"
+    );
+    const player = createCharacterElement(playerCharacter, {
+      role: "player",
+      lazy: false,
+    });
+    if (player) {
+      playerSide.appendChild(player.element);
+    }
+    scene.appendChild(playerSide);
+
+    const encounterSide = createElement(
+      "div",
+      "room-scene__side room-scene__side--encounter"
+    );
+    let encounterElement = null;
+
+    if (encounter && encounter.sprite) {
+      const shouldAnimate = encounter.animate && !shouldReduceMotion();
+      const encounterCharacter = createCharacterElement(encounter.sprite, {
+        role: "encounter",
+        animate: shouldAnimate,
+      });
+      if (encounterCharacter) {
+        encounterElement = encounterCharacter.element;
+        encounterSide.appendChild(encounterElement);
+        if (shouldAnimate) {
+          window.setTimeout(() => {
+            if (encounterElement && encounterElement.isConnected) {
+              encounterElement.classList.add("is-visible");
+            }
+          }, Math.max(0, Number(encounter.enterDelay) || 2000));
+        }
+      }
+    } else {
+      encounterSide.classList.add("room-scene__side--empty");
+    }
+
+    if (!encounterElement) {
+      scene.classList.add("room-scene--solo");
+    }
+
+    scene.appendChild(encounterSide);
+    return { scene, encounterElement };
+  }
+
+  function createWellScene() {
+    const scene = createElement("div", "well-scene");
+    const player = createCharacterElement(playerCharacter, {
+      role: "player",
+      lazy: false,
+      extraClasses: "character--well",
+    });
+    if (player) {
+      scene.appendChild(player.element);
+    }
+    return scene;
+  }
+
+  function getEncounterPrompt(encounterType, encounter) {
+    if (!encounterType) {
+      return "You secure what you can from the chamber before returning to the corridor.";
+    }
+
+    const name = encounter?.sprite?.name;
+    switch (encounterType) {
+      case "combat":
+        return name
+          ? `${name} materializes with a hostile shriek.`
+          : "A hostile spirit rushes to bar your way.";
+      case "elite":
+        return name
+          ? `${name} prowls the chamber, daring you to advance.`
+          : "An elite apparition challenges you for the room.";
+      case "boss":
+        return name
+          ? `${name} gathers its strength for a decisive clash.`
+          : "A boss spirit towers over the foyer awaiting your challenge.";
+      case "merchant":
+        return name
+          ? `You trade hushed words with ${name}, bartering for forbidden goods.`
+          : "A spectral merchant beckons you toward a clandestine bargain.";
+      default:
+        return "You secure what you can from the chamber before returning to the corridor.";
+    }
   }
 
   function getBackgroundForScreen(screenDef, options = {}) {
@@ -958,6 +1337,16 @@
       imagesToPreload.add(room.background);
     });
     imagesToPreload.add(foyerRoom.background);
+    [
+      playerCharacter,
+      ...enemySprites,
+      ...bossSprites,
+      ...merchantSprites,
+    ].forEach((sprite) => {
+      if (sprite && sprite.src) {
+        imagesToPreload.add(sprite.src);
+      }
+    });
     preloadImages(Array.from(imagesToPreload));
   }
 
