@@ -120,33 +120,56 @@
     return map;
   }, new Map());
 
-  const doorPositions = [
-    { className: "door-button--left" },
-    { className: "door-button--center" },
-    { className: "door-button--right" },
-  ];
-
-  const doorColorClasses = [
-    "door-button--amber",
-    "door-button--azure",
-    "door-button--crimson",
-    "door-button--verdant",
-    "door-button--violet",
-  ];
-
-  const doorTitlePool = [
-    "Door of Echoes",
-    "Door of Embers",
-    "Door of Thorns",
-    "Door of Riddles",
-    "Door of Whispers",
-    "Door of Velvet",
-    "Door of Gears",
-    "Door of Moonlight",
-    "Door of Secrets",
-    "Door of Quartz",
-    "Door of Ash",
-    "Door of Cinders",
+  const doorCategories = [
+    {
+      key: "combat",
+      label: "Combat",
+      colorClass: "door-button--crimson",
+      ariaDescription: "Engage in a standard combat encounter.",
+      detail: "Battle restless shades.",
+    },
+    {
+      key: "elite",
+      label: "Elite Combat",
+      colorClass: "door-button--violet",
+      ariaDescription: "Challenge a formidable elite opponent.",
+      detail: "Face a formidable elite.",
+    },
+    {
+      key: "boss",
+      label: "Boss Combat",
+      colorClass: "door-button--umbra",
+      ariaDescription: "Confront a boss-tier adversary.",
+      detail: "Challenge a boss-tier foe.",
+    },
+    {
+      key: "recovery",
+      label: "Recovery",
+      colorClass: "door-button--verdant",
+      ariaDescription: "Recover resources and gather your strength.",
+      detail: "Recover your strength.",
+    },
+    {
+      key: "treasure",
+      label: "Treasure",
+      colorClass: "door-button--amber",
+      ariaDescription: "Search for rare rewards hidden within the manor.",
+      detail: "Seek hidden rewards.",
+    },
+    {
+      key: "merchant",
+      label: "Merchant",
+      colorClass: "door-button--azure",
+      ariaDescription: "Trade with a spectral merchant.",
+      detail: "Barter with a spectral vendor.",
+    },
+    {
+      key: "event",
+      label: "Event",
+      colorClass: "door-button--aether",
+      ariaDescription: "Trigger an unpredictable manor event.",
+      detail: "Stumble into a strange event.",
+    },
   ];
 
   function buildInitialRoomPool() {
@@ -189,12 +212,9 @@
     return pool.slice(0, Math.min(count, pool.length));
   }
 
-  function getDoorTitles(count) {
-    const titles = shuffle(doorTitlePool);
-    if (count >= titles.length) {
-      return titles;
-    }
-    return titles.slice(0, count);
+  function getDoorCategoryOptions(count) {
+    const categories = sampleWithoutReplacement(doorCategories, count);
+    return categories.map((category) => ({ ...category }));
   }
 
   async function goToRoom(ctx, roomKey) {
@@ -497,34 +517,50 @@
 
         const doorMap = createElement("div", "door-map");
         if (roomsRemaining === 0) {
-          const foyerDoor = createDoorButton("Door to the Foyer", [
-            "door-button--center",
-            "door-button--crimson",
-          ], {
-            ariaDescription: "Leads directly to the foyer and the final encounter.",
-          });
-          foyerDoor.addEventListener("click", async () => {
-            foyerDoor.disabled = true;
+          const { element: foyerDoor, button: foyerButton } = createDoorChoice(
+            "Door to the Foyer",
+            ["door-button--umbra"],
+            {
+              ariaDescription:
+                "Leads directly to the foyer and the final encounter.",
+              displayLabel: "Foyer",
+              detail: "Face Helen Cebarti's final challenge.",
+            }
+          );
+          foyerButton.addEventListener("click", async () => {
+            foyerButton.disabled = true;
             await goToFoyer(ctx);
           });
           doorMap.appendChild(foyerDoor);
         } else {
           const doorCount = Math.min(3, roomsRemaining);
           const roomsForDoors = sampleWithoutReplacement(availableRooms, doorCount);
-          const positions = shuffle(doorPositions).slice(0, doorCount);
-          const colors = shuffle(doorColorClasses);
-          const doorTitles = getDoorTitles(doorCount);
+          const categories = getDoorCategoryOptions(doorCount);
 
           roomsForDoors.forEach((roomKey, index) => {
-            const label = doorTitles[index] || `Door ${index + 1}`;
-            const positionClass = positions[index]?.className || "door-button--center";
-            const colorClass = colors[index % colors.length];
-            const doorButton = createDoorButton(label, [positionClass, colorClass]);
+            const category = categories[index] || {};
+            const extraClasses = [];
+            if (typeof category.colorClass === "string" && category.colorClass) {
+              extraClasses.push(category.colorClass);
+            }
+            const { element: doorChoice, button: doorButton } = createDoorChoice(
+              category.label || `Door ${index + 1}`,
+              extraClasses,
+              {
+                ariaDescription:
+                  category.ariaDescription || "Leads to an unknown chamber.",
+                detail: category.detail,
+                dataset:
+                  typeof category.key === "string"
+                    ? { category: category.key }
+                    : undefined,
+              }
+            );
             doorButton.addEventListener("click", async () => {
               doorButton.disabled = true;
               await goToRoom(ctx, roomKey);
             });
-            doorMap.appendChild(doorButton);
+            doorMap.appendChild(doorChoice);
           });
         }
 
@@ -718,6 +754,16 @@
         ? options.ariaDescription
         : "Leads to an unknown chamber.";
     button.setAttribute("aria-label", `${label}. ${ariaDescription}`);
+    button.title = `${label} — ${ariaDescription}`;
+
+    if (options.dataset && typeof options.dataset === "object") {
+      Object.entries(options.dataset).forEach(([key, value]) => {
+        if (value === undefined || value === null) {
+          return;
+        }
+        button.dataset[key] = String(value);
+      });
+    }
 
     const hiddenLabel = createElement(
       "span",
@@ -726,6 +772,26 @@
     );
     button.appendChild(hiddenLabel);
     return button;
+  }
+
+  function createDoorChoice(label, extraClasses = [], options = {}) {
+    const button = createDoorButton(label, extraClasses, options);
+    const wrapper = createElement("div", "door-option");
+    wrapper.appendChild(button);
+
+    const displayLabel =
+      typeof options.displayLabel === "string" && options.displayLabel.trim().length > 0
+        ? options.displayLabel
+        : label;
+    const labelElement = createElement("span", "door-option__label", displayLabel);
+    wrapper.appendChild(labelElement);
+
+    if (typeof options.detail === "string" && options.detail.trim().length > 0) {
+      const detailElement = createElement("span", "door-option__detail", options.detail);
+      wrapper.appendChild(detailElement);
+    }
+
+    return { element: wrapper, button, labelElement };
   }
 
   function createRunTracker(text) {
