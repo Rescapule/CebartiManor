@@ -4,7 +4,103 @@
     menu: "bg_wallpaper.png",
     well: "bg_room_well.png",
     corridor: "bg_corridor.png",
+    foyer: "bg_room_foyer.png",
+    victory: "bg_victoryscreen.png",
   };
+
+  const roomDefinitions = [
+    {
+      key: "well",
+      name: "Submerged Reliquary",
+      background: "bg_room_well.png",
+      description:
+        "The well chamber opens into a circular antechamber, its waters thrumming with residual whispers that tug at your memory.",
+      ariaLabel: "A flooded reliquary chamber branching from the manor's Styx well.",
+    },
+    {
+      key: "atrium",
+      name: "Flooded Atrium",
+      background: "bg_room_atrium.png",
+      description:
+        "Collapsed skylights spill moonlight across the atrium's reflecting pool. Spectral vines curl toward the rippling surface.",
+      ariaLabel: "A decayed manor atrium filled with water and moonlight.",
+    },
+    {
+      key: "bedroom",
+      name: "Forsaken Bedroom",
+      background: "bg_room_bedroom.png",
+      description:
+        "Antique furniture floats inches above the ground, swaying in time with a lullaby no mortal voice should sing.",
+      ariaLabel: "An abandoned bedroom with haunted furnishings suspended midair.",
+    },
+    {
+      key: "closet",
+      name: "Locksmith's Closet",
+      background: "bg_room_closet.png",
+      description:
+        "Walls of keys clatter like chimes. One of them pulses with a heartbeat in sync with your own.",
+      ariaLabel: "A cramped closet overflowing with shimmering keys.",
+    },
+    {
+      key: "counsel",
+      name: "Counsel Chamber",
+      background: "bg_room_counsel.png",
+      description:
+        "Couches circle a darkened fireplace. The ashes whisper fractured therapy sessions from lifetimes ago.",
+      ariaLabel: "A dim counseling chamber lined with couches and a smoldering hearth.",
+    },
+    {
+      key: "kitchen",
+      name: "Haunted Kitchen",
+      background: "bg_room_kitchen.png",
+      description:
+        "Copper pots rattle without touch. Aromas of impossible feasts pull at your hunger and your soul alike.",
+      ariaLabel: "A spectral kitchen with floating utensils and lingering aromas.",
+    },
+    {
+      key: "studio",
+      name: "Painter's Studio",
+      background: "bg_room_studio.png",
+      description:
+        "Unfinished canvases watch you. Fresh paint crawls across them, forming scenes of your past lives.",
+      ariaLabel: "An artist's studio where the paintings appear to move on their own.",
+    },
+    {
+      key: "study",
+      name: "Occult Study",
+      background: "bg_room_study.png",
+      description:
+        "Books flutter from shelves as if anxious birds. Glyphs glow along the desk, cataloging every decision you've made tonight.",
+      ariaLabel: "A study filled with floating books and glowing occult glyphs.",
+    },
+    {
+      key: "washroom",
+      name: "Mirror Washroom",
+      background: "bg_room_washroom.png",
+      description:
+        "Steam coats the mirrors, yet silhouettes stare back from beyond the glass waiting to trade places.",
+      ariaLabel: "A misty washroom with haunted mirrors.",
+    },
+    {
+      key: "winecellar",
+      name: "Cursed Wine Cellar",
+      background: "bg_room_winecellar.png",
+      description:
+        "Barrels hum with the voices of bottled celebrations. A single cork trembles, eager to release something old.",
+      ariaLabel: "A wine cellar where barrels glow with spectral light.",
+    },
+  ];
+
+  const foyerRoom = {
+    key: "foyer",
+    name: "The Foyer",
+    background: backgrounds.foyer,
+    description:
+      "Helen Cebarti's foyer waits in stillness. The manor itself holds its breath for the coming confrontation.",
+    ariaLabel: "The foyer of Cebarti Manor prepared for the final confrontation.",
+  };
+
+  const TOTAL_ROOMS_PER_RUN = roomDefinitions.length + 1;
 
   const state = {
     currentScreen: null,
@@ -12,7 +108,132 @@
     inRun: false,
     lastRunScreen: null,
     corridorRefreshes: 0,
+    roomPool: [],
+    roomHistory: [],
+    currentRoomNumber: 0,
+    currentRoomKey: null,
   };
+
+  const ROOMS_BEFORE_BOSS = roomDefinitions.length;
+  const roomMap = roomDefinitions.reduce((map, room) => {
+    map.set(room.key, room);
+    return map;
+  }, new Map());
+
+  const doorPositions = [
+    { className: "door-button--left" },
+    { className: "door-button--center" },
+    { className: "door-button--right" },
+  ];
+
+  const doorColorClasses = [
+    "door-button--amber",
+    "door-button--azure",
+    "door-button--crimson",
+    "door-button--verdant",
+    "door-button--violet",
+  ];
+
+  const doorTitlePool = [
+    "Door of Echoes",
+    "Door of Embers",
+    "Door of Thorns",
+    "Door of Riddles",
+    "Door of Whispers",
+    "Door of Velvet",
+    "Door of Gears",
+    "Door of Moonlight",
+    "Door of Secrets",
+    "Door of Quartz",
+    "Door of Ash",
+    "Door of Cinders",
+  ];
+
+  function buildInitialRoomPool() {
+    return roomDefinitions.map((room) => room.key);
+  }
+
+  function initializeRunState() {
+    state.roomPool = buildInitialRoomPool();
+    state.roomHistory = [];
+    state.currentRoomNumber = 0;
+    state.currentRoomKey = null;
+    state.corridorRefreshes = 0;
+  }
+
+  function clearRunState() {
+    state.roomPool = [];
+    state.roomHistory = [];
+    state.currentRoomNumber = 0;
+    state.currentRoomKey = null;
+    state.corridorRefreshes = 0;
+    state.lastRunScreen = null;
+    state.hasSave = false;
+    state.inRun = false;
+  }
+
+  function shuffle(array) {
+    const result = [...array];
+    for (let i = result.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  function sampleWithoutReplacement(source, count) {
+    if (!Array.isArray(source) || source.length === 0 || count <= 0) {
+      return [];
+    }
+    const pool = shuffle(source);
+    return pool.slice(0, Math.min(count, pool.length));
+  }
+
+  function getDoorTitles(count) {
+    const titles = shuffle(doorTitlePool);
+    if (count >= titles.length) {
+      return titles;
+    }
+    return titles.slice(0, count);
+  }
+
+  async function goToRoom(ctx, roomKey) {
+    const room = roomMap.get(roomKey);
+    if (!room) {
+      ctx.showToast("That path is sealed.");
+      return;
+    }
+
+    ctx.state.roomPool = ctx.state.roomPool.filter((key) => key !== roomKey);
+    if (ctx.state.roomHistory[ctx.state.roomHistory.length - 1] !== roomKey) {
+      ctx.state.roomHistory.push(roomKey);
+    }
+    ctx.state.currentRoomNumber = ctx.state.roomHistory.length;
+    ctx.state.currentRoomKey = roomKey;
+    ctx.state.lastRunScreen = "room";
+    ctx.state.corridorRefreshes = 0;
+
+    await ctx.transitionTo("room", {
+      room,
+      background: room.background,
+      ariaLabel: room.ariaLabel,
+    });
+    ctx.showToast(`You enter ${room.name}.`);
+  }
+
+  async function goToFoyer(ctx) {
+    ctx.state.roomPool = [];
+    if (ctx.state.roomHistory[ctx.state.roomHistory.length - 1] !== foyerRoom.key) {
+      ctx.state.roomHistory.push(foyerRoom.key);
+    }
+    ctx.state.currentRoomNumber = ctx.state.roomHistory.length;
+    ctx.state.currentRoomKey = foyerRoom.key;
+    ctx.state.lastRunScreen = "foyer";
+    ctx.state.corridorRefreshes = 0;
+
+    await ctx.transitionTo("foyer");
+    ctx.showToast("The foyer looms ahead.");
+  }
 
   const backgroundEl = document.getElementById("background");
   const contentEl = document.getElementById("content");
@@ -82,6 +303,7 @@
             ctx.showToast("No run to continue yet.");
             return;
           }
+          ctx.state.inRun = true;
           ctx.transitionTo(ctx.state.lastRunScreen);
         });
 
@@ -91,9 +313,10 @@
           "New Run"
         );
         newRunBtn.addEventListener("click", () => {
+          initializeRunState();
           ctx.state.inRun = true;
           ctx.state.hasSave = false;
-          ctx.state.corridorRefreshes = 0;
+          ctx.state.lastRunScreen = "well";
           ctx.transitionTo("well");
         });
 
@@ -228,56 +451,242 @@
       ariaLabel: "A corridor within Cebarti Manor awaiting door choices.",
       checkpoint: true,
       render(ctx) {
+        if (ctx.options && ctx.options.fromRoom) {
+          ctx.state.currentRoomKey = null;
+        }
+
         const wrapper = createElement("div", "screen screen--corridor");
+        const availableRooms = Array.isArray(ctx.state.roomPool)
+          ? ctx.state.roomPool
+          : [];
+        const roomsRemaining = Math.max(availableRooms.length, 0);
+        const roomsCleared = Math.min(
+          ROOMS_BEFORE_BOSS - roomsRemaining,
+          ROOMS_BEFORE_BOSS
+        );
+
+        const tracker = createRunTracker(
+          `Rooms Cleared ${roomsCleared}/${ROOMS_BEFORE_BOSS}`
+        );
 
         const title = createElement("h2", "screen__title", "The Corridor");
         const refreshCount = ctx.state.corridorRefreshes;
-        const descriptionText =
-          refreshCount === 0
-            ? "Three doors shimmer ahead. Choose your path or continue down the corridor."
-            : `The manor shifts around you. Corridor reshaped ${refreshCount} time${
-                refreshCount === 1 ? "" : "s"
-              }.`;
+        let descriptionText;
+
+        if (roomsRemaining === 0) {
+          descriptionText =
+            "Only the foyer remains. Steel yourself before the final confrontation.";
+        } else if (roomsRemaining === 1) {
+          descriptionText =
+            "Only a single chamber stands between you and the foyer. Choose with care.";
+        } else {
+          descriptionText = `${roomsRemaining} chambers remain before the foyer.`;
+        }
+
+        if (roomsRemaining > 0) {
+          if (refreshCount === 0) {
+            descriptionText += " Three doors shimmer ahead.";
+          } else {
+            descriptionText += ` The manor has reshaped itself ${refreshCount} time${
+              refreshCount === 1 ? "" : "s"
+            }.`;
+          }
+        }
+
         const subtitle = createElement("p", "screen__subtitle", descriptionText);
 
         const doorMap = createElement("div", "door-map");
-        const placeholders = [
-          {
-            label: "Future yellow door",
-            classes: "door-slot door-slot--yellow door-slot--left",
-          },
-          {
-            label: "Future blue door",
-            classes: "door-slot door-slot--blue door-slot--center",
-          },
-          {
-            label: "Future red door",
-            classes: "door-slot door-slot--red door-slot--right",
-          },
-        ];
-        placeholders.forEach((placeholder) => {
-          const slot = createElement("div", placeholder.classes);
-          slot.dataset.label = placeholder.label;
-          const hiddenLabel = createElement("span", "sr-only", placeholder.label);
-          slot.appendChild(hiddenLabel);
-          doorMap.appendChild(slot);
+        if (roomsRemaining === 0) {
+          const foyerDoor = createDoorButton("Door to the Foyer", [
+            "door-button--center",
+            "door-button--crimson",
+          ], {
+            ariaDescription: "Leads directly to the foyer and the final encounter.",
+          });
+          foyerDoor.addEventListener("click", async () => {
+            foyerDoor.disabled = true;
+            await goToFoyer(ctx);
+          });
+          doorMap.appendChild(foyerDoor);
+        } else {
+          const doorCount = Math.min(3, roomsRemaining);
+          const roomsForDoors = sampleWithoutReplacement(availableRooms, doorCount);
+          const positions = shuffle(doorPositions).slice(0, doorCount);
+          const colors = shuffle(doorColorClasses);
+          const doorTitles = getDoorTitles(doorCount);
+
+          roomsForDoors.forEach((roomKey, index) => {
+            const label = doorTitles[index] || `Door ${index + 1}`;
+            const positionClass = positions[index]?.className || "door-button--center";
+            const colorClass = colors[index % colors.length];
+            const doorButton = createDoorButton(label, [positionClass, colorClass]);
+            doorButton.addEventListener("click", async () => {
+              doorButton.disabled = true;
+              await goToRoom(ctx, roomKey);
+            });
+            doorMap.appendChild(doorButton);
+          });
+        }
+
+        let footer = null;
+        if (roomsRemaining > 0) {
+          footer = createElement("div", "screen-footer");
+          const continueButton = createElement(
+            "button",
+            "button button--primary",
+            "Continue Down the Corridor"
+          );
+          continueButton.addEventListener("click", async () => {
+            ctx.state.corridorRefreshes += 1;
+            ctx.state.lastRunScreen = "corridor";
+            await ctx.transitionTo("corridor", { refresh: true });
+            ctx.showToast("The corridor rearranges itself.");
+          });
+          footer.appendChild(continueButton);
+        }
+
+        wrapper.append(tracker, title, subtitle, doorMap);
+        if (footer) {
+          wrapper.appendChild(footer);
+        }
+        return wrapper;
+      },
+    },
+    room: {
+      key: "room",
+      render(ctx) {
+        const roomData = ctx.options?.room;
+        const wrapper = createElement("div", "screen screen--room");
+        const roomNumber = Math.max(ctx.state.currentRoomNumber, 1);
+        const tracker = createRunTracker(
+          `Room ${Math.min(roomNumber, TOTAL_ROOMS_PER_RUN)} of ${TOTAL_ROOMS_PER_RUN}`
+        );
+
+        if (!roomData) {
+          const title = createElement("h2", "screen__title", "The Manor Resists");
+          const subtitle = createElement(
+            "p",
+            "screen__subtitle",
+            "The chosen doorway seals shut. You retreat to the corridor."
+          );
+          const footer = createElement("div", "screen-footer");
+          const backButton = createElement(
+            "button",
+            "button button--primary",
+            "Return to the Corridor"
+          );
+          backButton.addEventListener("click", async () => {
+            ctx.state.currentRoomKey = null;
+            ctx.state.lastRunScreen = "corridor";
+            await ctx.transitionTo("corridor", { refresh: true });
+          });
+          footer.appendChild(backButton);
+          wrapper.append(tracker, title, subtitle, footer);
+          return wrapper;
+        }
+
+        const title = createElement("h2", "screen__title", roomData.name);
+        const subtitle = createElement("p", "screen__subtitle", roomData.description);
+        const prompt = createElement(
+          "p",
+          "screen__subtitle",
+          "You secure what you can from the chamber before returning to the corridor."
+        );
+        const footer = createElement("div", "screen-footer");
+        const continueButton = createElement(
+          "button",
+          "button button--primary",
+          "Return to the Corridor"
+        );
+        continueButton.addEventListener("click", async () => {
+          ctx.state.currentRoomKey = null;
+          ctx.state.lastRunScreen = "corridor";
+          ctx.state.corridorRefreshes = 0;
+          await ctx.transitionTo("corridor", { fromRoom: true });
+          ctx.showToast("You slip back into the corridor.");
         });
+        footer.appendChild(continueButton);
+
+        wrapper.append(tracker, title, subtitle, prompt, footer);
+        return wrapper;
+      },
+    },
+    foyer: {
+      key: "foyer",
+      background: backgrounds.foyer,
+      ariaLabel: foyerRoom.ariaLabel,
+      checkpoint: true,
+      render(ctx) {
+        const wrapper = createElement("div", "screen screen--room screen--foyer");
+        const roomNumber = Math.max(ctx.state.currentRoomNumber, TOTAL_ROOMS_PER_RUN);
+        const tracker = createRunTracker(
+          `Room ${Math.min(roomNumber, TOTAL_ROOMS_PER_RUN)} of ${TOTAL_ROOMS_PER_RUN}`
+        );
+
+        const title = createElement("h2", "screen__title", foyerRoom.name);
+        const subtitle = createElement("p", "screen__subtitle", foyerRoom.description);
+        const prompt = createElement(
+          "p",
+          "screen__subtitle",
+          "Helen Cebarti gathers her strength. This is the final stand."
+        );
 
         const footer = createElement("div", "screen-footer");
         const continueButton = createElement(
           "button",
           "button button--primary",
-          "Continue Down the Corridor"
+          "Challenge the Foyer"
         );
         continueButton.addEventListener("click", async () => {
-          ctx.state.corridorRefreshes += 1;
-          ctx.state.lastRunScreen = "corridor";
-          await ctx.transitionTo("corridor", { refresh: true });
-          ctx.showToast("The corridor rearranges itself.");
+          continueButton.disabled = true;
+          ctx.state.hasSave = false;
+          ctx.state.lastRunScreen = null;
+          ctx.state.inRun = false;
+          await ctx.transitionTo("victory");
         });
         footer.appendChild(continueButton);
 
-        wrapper.append(title, subtitle, doorMap, footer);
+        wrapper.append(tracker, title, subtitle, prompt, footer);
+        return wrapper;
+      },
+    },
+    victory: {
+      key: "victory",
+      background: backgrounds.victory,
+      ariaLabel: "Sunlight pours through an open archway as the manor releases you.",
+      render(ctx) {
+        const wrapper = createElement("div", "screen screen--victory");
+
+        const title = createElement("h2", "screen__title", "You Escape the Well");
+        const subtitle = createElement(
+          "p",
+          "screen__subtitle",
+          "Congratulations! You have escaped the well and step once more into the realm of the living."
+        );
+        const clearedRooms = Math.min(
+          ctx.state.roomHistory.filter((key) => key !== foyerRoom.key).length,
+          ROOMS_BEFORE_BOSS
+        );
+        const summary = createElement(
+          "p",
+          "screen__subtitle",
+          `You endured ${clearedRooms} haunted chamber${clearedRooms === 1 ? "" : "s"} before confronting the foyer.`
+        );
+
+        const footer = createElement("div", "screen-footer");
+        const menuButton = createElement(
+          "button",
+          "button button--primary",
+          "Return to Main Menu"
+        );
+        menuButton.addEventListener("click", async () => {
+          clearRunState();
+          await ctx.transitionTo("mainMenu");
+          ctx.showToast("You breathe freely in the manor's entry hall.");
+        });
+        footer.appendChild(menuButton);
+
+        wrapper.append(title, subtitle, summary, footer);
         return wrapper;
       },
     },
@@ -294,7 +703,39 @@
     return element;
   }
 
-  function getBackgroundForScreen(screenDef) {
+  function createDoorButton(label, extraClasses = [], options = {}) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.classList.add("door-button");
+    const classes = Array.isArray(extraClasses) ? extraClasses : [extraClasses];
+    classes
+      .filter((cls) => typeof cls === "string" && cls.trim().length > 0)
+      .forEach((cls) => button.classList.add(cls));
+    button.dataset.label = label;
+
+    const ariaDescription =
+      typeof options.ariaDescription === "string"
+        ? options.ariaDescription
+        : "Leads to an unknown chamber.";
+    button.setAttribute("aria-label", `${label}. ${ariaDescription}`);
+
+    const hiddenLabel = createElement(
+      "span",
+      "sr-only",
+      `${label}. ${ariaDescription}`
+    );
+    button.appendChild(hiddenLabel);
+    return button;
+  }
+
+  function createRunTracker(text) {
+    return createElement("div", "run-tracker", text);
+  }
+
+  function getBackgroundForScreen(screenDef, options = {}) {
+    if (options.background) {
+      return options.background;
+    }
     if (screenDef.background) {
       return screenDef.background;
     }
@@ -304,14 +745,17 @@
     return backgrounds.menu;
   }
 
-  function setBackground(screenDef) {
-    const image = getBackgroundForScreen(screenDef);
+  function setBackground(screenDef, options = {}) {
+    const image = getBackgroundForScreen(screenDef, options);
     if (backgroundEl.dataset.bg !== image) {
       backgroundEl.style.backgroundImage = `url("${image}")`;
       backgroundEl.dataset.bg = image;
     }
-    if (screenDef.ariaLabel) {
-      backgroundEl.setAttribute("aria-label", screenDef.ariaLabel);
+    const ariaLabel = options.ariaLabel || screenDef.ariaLabel;
+    if (ariaLabel) {
+      backgroundEl.setAttribute("aria-label", ariaLabel);
+    } else {
+      backgroundEl.removeAttribute("aria-label");
     }
   }
 
@@ -408,7 +852,7 @@
 
     const screenContent = screenDef.render(context);
     contentEl.replaceChildren(screenContent);
-    setBackground(screenDef);
+    setBackground(screenDef, options);
 
     state.currentScreen = screenKey;
     if (screenDef.checkpoint) {
@@ -430,7 +874,7 @@
 
   function initialize() {
     const initialScreen = screens.splash;
-    setBackground(initialScreen);
+    setBackground(initialScreen, {});
     const splashContent = initialScreen.render({
       state,
       transitionTo,
@@ -444,6 +888,10 @@
     Object.values(screens).forEach((screen) => {
       imagesToPreload.add(getBackgroundForScreen(screen));
     });
+    roomDefinitions.forEach((room) => {
+      imagesToPreload.add(room.background);
+    });
+    imagesToPreload.add(foyerRoom.background);
     preloadImages(Array.from(imagesToPreload));
   }
 
