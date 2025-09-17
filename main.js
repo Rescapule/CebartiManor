@@ -150,7 +150,11 @@
         combat.player.temp.critChance += 5;
       },
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 6, { source: "Strike" });
+        dealDamage(combat, actor, target, 6, {
+          source: "Strike",
+          actionKey: "strike",
+          apCost: 1,
+        });
       },
     },
     grapple: {
@@ -185,7 +189,11 @@
       loopToStart: true,
       effect: ({ combat, actor, target }) => {
         const bonus = hasStatus(target, "restrained") ? 6 : 0;
-        dealDamage(combat, actor, target, 12 + bonus, { source: "Throw" });
+        dealDamage(combat, actor, target, 12 + bonus, {
+          source: "Throw",
+          actionKey: "throw",
+          apCost: 3,
+        });
       },
     },
     bloodlash: {
@@ -197,7 +205,11 @@
       baseDamage: 8,
       description: "Deal 8 damage and apply Bleed (2).",
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 8, { source: "Bloodlash" });
+        dealDamage(combat, actor, target, 8, {
+          source: "Bloodlash",
+          actionKey: "bloodlash",
+          apCost: 2,
+        });
         applyStatus(target, "bleed", 2, { duration: 3 });
         logCombat(combat, `${target.name} suffers Bleed (2).`);
       },
@@ -230,7 +242,11 @@
       effect: ({ combat, actor, target }) => {
         const bleedStacks = getStatusStacks(target, "bleed");
         const bonus = bleedStacks > 0 ? 6 : 0;
-        dealDamage(combat, actor, target, 12 + bonus, { source: "Smash" });
+        dealDamage(combat, actor, target, 12 + bonus, {
+          source: "Smash",
+          actionKey: "smash",
+          apCost: 3,
+        });
       },
     },
     overdrive: {
@@ -252,7 +268,11 @@
         }
         const damage = apSpent * 3;
         actor.ap = 0;
-        dealDamage(combat, actor, target, damage, { source: "Overdrive" });
+        dealDamage(combat, actor, target, damage, {
+          source: "Overdrive",
+          actionKey: "overdrive",
+          apCost: apSpent,
+        });
         logCombat(
           combat,
           `${actor.name} channels ${apSpent} AP into Overdrive for ${damage} damage.`
@@ -337,7 +357,11 @@
       chain: { key: "festival", index: 1 },
       loopToStart: true,
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 5, { source: "Sparks" });
+        dealDamage(combat, actor, target, 5, {
+          source: "Sparks",
+          actionKey: "sparks",
+          apCost: 2,
+        });
       },
     },
     cheer: {
@@ -438,7 +462,11 @@
           return { cancel: true };
         }
         actor.essence -= 5;
-        dealDamage(combat, actor, target, 20, { source: "Breakthrough" });
+        dealDamage(combat, actor, target, 20, {
+          source: "Breakthrough",
+          actionKey: "breakthrough",
+          apCost: 3,
+        });
       },
     },
     dirge: {
@@ -450,7 +478,11 @@
       baseDamage: 8,
       description: "Deal 8 damage and apply Bleed (2).",
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 8, { source: "Dirge" });
+        dealDamage(combat, actor, target, 8, {
+          source: "Dirge",
+          actionKey: "dirge",
+          apCost: 4,
+        });
         applyStatus(target, "bleed", 2, { duration: 3 });
         logCombat(combat, `${target.name} is swept into a bleeding dirge.`);
       },
@@ -645,6 +677,121 @@
 
   const MEMORY_MAP = new Map(
     MEMORY_DEFINITIONS.map((memory) => [memory.key, memory])
+  );
+
+  const RELIC_DEFINITIONS = [
+    {
+      key: "relicCandleRedWax",
+      name: "Candle of Red Wax",
+      emotion: "Anger",
+      description:
+        "Bleed deals double damage and you heal for half the damage it inflicts.",
+      passive: { bleedMultiplier: 2, bleedHealFraction: 0.5 },
+    },
+    {
+      key: "relicIronGauntlet",
+      name: "Iron Gauntlet with Broken Knuckles",
+      emotion: "Anger",
+      description: "Attacks that cost 1 AP deal +3 damage.",
+      passive: { lowApAttackBonus: 3 },
+    },
+    {
+      key: "relicCarouselKey",
+      name: "Cebarti's Carousel Key",
+      emotion: "Fear",
+      description:
+        "Each time you cycle a chain, gain Armor (1). Every third cycle deals 3 damage to the enemy.",
+      passive: { applyCycleArmor: 1, cycleDamageFrequency: 3, cycleDamageAmount: 3 },
+    },
+    {
+      key: "relicPorcelainRat",
+      name: "Porcelain Rat Figurine",
+      emotion: "Fear",
+      description:
+        "When an enemy attack misses you, it falters and skips its next action.",
+      passive: { stallEnemyOnMiss: true },
+    },
+    {
+      key: "relicLanternFestival",
+      name: "Lantern of Festival Glass",
+      emotion: "Joy",
+      description: "While any buff is active, gain Essence Regen (1).",
+      passive: { buffGrantsEssenceRegen: 1 },
+    },
+    {
+      key: "relicLaughingMask",
+      name: "Laughing Mask",
+      emotion: "Joy",
+      description:
+        "Buff actions cost –1 AP but deal 1 self-damage when used.",
+      passive: { buffCostReductionFlat: 1, buffSelfDamage: 1 },
+    },
+    {
+      key: "relicBurialUrn",
+      name: "Burial Urn with Cracked Lid",
+      emotion: "Sadness",
+      description: "When you burn your last action, gain +3 AP next turn.",
+      passive: { apBonusOnEmpty: 3 },
+    },
+    {
+      key: "relicTatteredVeil",
+      name: "Tattered Mourning Veil",
+      emotion: "Sadness",
+      description:
+        "Essence costs are reduced by 1 (minimum 0) but you lose 1 Essence at the start of each turn.",
+      passive: { essenceCostReduction: 1, startTurnEssenceLoss: 1 },
+    },
+    {
+      key: "relicVictoryBanner",
+      name: "Victory Banner",
+      emotion: "Anger + Joy",
+      description:
+        "After you play a buff, your next attack this turn deals double damage.",
+      passive: { doubleNextAttackAfterBuff: true },
+    },
+    {
+      key: "relicCandlelitHourglass",
+      name: "Candlelit Hourglass",
+      emotion: "Fear + Joy",
+      description: "At end of turn, convert unused AP into Essence.",
+      passive: { convertUnusedApToEssence: true },
+    },
+    {
+      key: "relicFracturedMirror",
+      name: "Fractured Mirror",
+      emotion: "Colorless",
+      description:
+        "The last action you play each turn has a 25% chance to repeat at +1 AP cost.",
+      passive: { repeatLastActionChance: 0.25 },
+    },
+  ];
+
+  const RELIC_MAP = new Map(RELIC_DEFINITIONS.map((relic) => [relic.key, relic]));
+
+  const CONSUMABLE_DEFINITIONS = [
+    {
+      key: "consumablePotionEssence",
+      name: "Potion of Essence",
+      description: "Restore 6 Essence (cannot exceed your maximum).",
+      effect: { type: "restoreEssence", amount: 6 },
+    },
+    {
+      key: "consumablePolishedCoin",
+      name: "Polished Coin",
+      description: "Gain 15 Gold immediately.",
+      effect: { type: "gainGold", amount: 15 },
+    },
+    {
+      key: "consumableShroudTalisman",
+      name: "Shroud Talisman",
+      description:
+        "Negate the next cursed effect or trap that would afflict you this run.",
+      effect: { type: "grantShroudGuard" },
+    },
+  ];
+
+  const CONSUMABLE_MAP = new Map(
+    CONSUMABLE_DEFINITIONS.map((item) => [item.key, item])
   );
 
   const DEFAULT_PLAYER_STATS = {
@@ -1051,8 +1198,17 @@
     currentEncounterType: null,
     currentEncounter: null,
     playerMemories: [],
+    playerRelics: [],
+    playerGold: 0,
+    playerConsumables: {},
+    playerEssence: DEFAULT_PLAYER_STATS.maxEssence,
+    playerMaxEssence: DEFAULT_PLAYER_STATS.maxEssence,
+    shroudGuardCharges: 0,
     draftPacks: [],
     selectedDrafts: [],
+    resourceDisplays: {},
+    inventoryView: null,
+    activeCombat: null,
   };
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
@@ -1126,11 +1282,20 @@
     state.currentEncounterType = null;
     state.currentEncounter = null;
     state.playerMemories = [];
+    state.playerRelics = [];
+    state.playerGold = 0;
+    state.playerConsumables = {};
+    state.playerEssence = DEFAULT_PLAYER_STATS.maxEssence;
+    state.playerMaxEssence = DEFAULT_PLAYER_STATS.maxEssence;
+    state.shroudGuardCharges = 0;
     state.draftPacks = [];
     state.selectedDrafts = [];
+    state.inventoryView = null;
+    state.activeCombat = null;
   }
 
   function clearRunState() {
+    closeInventoryPanel();
     state.roomPool = [];
     state.roomHistory = [];
     state.currentRoomNumber = 0;
@@ -1142,8 +1307,16 @@
     state.currentEncounterType = null;
     state.currentEncounter = null;
     state.playerMemories = [];
+    state.playerRelics = [];
+    state.playerGold = 0;
+    state.playerConsumables = {};
+    state.playerEssence = DEFAULT_PLAYER_STATS.maxEssence;
+    state.playerMaxEssence = DEFAULT_PLAYER_STATS.maxEssence;
+    state.shroudGuardCharges = 0;
     state.draftPacks = [];
     state.selectedDrafts = [];
+    state.inventoryView = null;
+    state.activeCombat = null;
   }
 
   function shuffle(array) {
@@ -1454,6 +1627,7 @@
         );
 
         const tracker = createRunTracker(
+          ctx,
           `Rooms Cleared ${roomsCleared}/${ROOMS_BEFORE_BOSS}`
         );
 
@@ -1566,6 +1740,7 @@
         const wrapper = createElement("div", "screen screen--room");
         const roomNumber = Math.max(ctx.state.currentRoomNumber, 1);
         const tracker = createRunTracker(
+          ctx,
           `Room ${Math.min(roomNumber, TOTAL_ROOMS_PER_RUN)} of ${TOTAL_ROOMS_PER_RUN}`
         );
 
@@ -1798,8 +1973,412 @@
     return { element: wrapper, button, labelElement };
   }
 
-  function createRunTracker(text) {
-    return createElement("div", "run-tracker", text);
+  function resetResourceDisplayRegistry() {
+    state.resourceDisplays = {
+      progress: [],
+      gold: [],
+      essence: [],
+      consumables: [],
+    };
+  }
+
+  function registerResourceDisplay(type, element) {
+    if (!state.resourceDisplays) {
+      resetResourceDisplayRegistry();
+    }
+    if (!state.resourceDisplays[type]) {
+      state.resourceDisplays[type] = [];
+    }
+    state.resourceDisplays[type].push(element);
+  }
+
+  function getTotalConsumables() {
+    if (!state.playerConsumables) {
+      return 0;
+    }
+    return Object.values(state.playerConsumables).reduce(
+      (sum, count) => sum + Number(count || 0),
+      0
+    );
+  }
+
+  function updateResourceDisplays() {
+    const goldValue = state.playerGold || 0;
+    const essenceValue = Math.max(0, Math.round(state.playerEssence || 0));
+    const maxEssenceValue = Math.max(
+      essenceValue,
+      Math.round(state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence)
+    );
+    const consumableValue = getTotalConsumables();
+
+    if (state.resourceDisplays?.gold) {
+      state.resourceDisplays.gold.forEach((element) => {
+        element.textContent = `Gold ${goldValue}`;
+      });
+    }
+    if (state.resourceDisplays?.essence) {
+      state.resourceDisplays.essence.forEach((element) => {
+        element.textContent = `Essence ${essenceValue}/${maxEssenceValue}`;
+      });
+    }
+    if (state.resourceDisplays?.consumables) {
+      state.resourceDisplays.consumables.forEach((element) => {
+        element.textContent = `Consumables ${consumableValue}`;
+      });
+    }
+    refreshInventoryPanel();
+  }
+
+  function createRelicToken(relic) {
+    const token = createElement("span", "relic-token");
+    const slug = (relic.emotion || "colorless")
+      .toLowerCase()
+      .replace(/[^a-z]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (slug) {
+      token.classList.add(`relic-token--${slug}`);
+    }
+    token.title = relic.emotion || "Relic";
+    token.setAttribute("aria-hidden", "true");
+    return token;
+  }
+
+  function createInventoryButton(ctx) {
+    const button = createElement("button", "inventory-button");
+    button.type = "button";
+    button.setAttribute(
+      "aria-label",
+      "View collected memories, relics, and consumables"
+    );
+    const icon = createElement("span", "inventory-button__icon", "☍");
+    icon.setAttribute("aria-hidden", "true");
+    button.appendChild(icon);
+    const label = createElement("span", "inventory-button__label", "Ledger");
+    button.appendChild(label);
+    button.addEventListener("click", () => showInventoryPanel(ctx));
+    return button;
+  }
+
+  function createRunTracker(ctx, text) {
+    const tracker = createElement("div", "run-tracker");
+    const progress = createElement("span", "run-tracker__progress", text);
+    registerResourceDisplay("progress", progress);
+    tracker.appendChild(progress);
+
+    const resources = createElement("div", "run-resources");
+    const gold = createElement("span", "run-resources__item");
+    registerResourceDisplay("gold", gold);
+    resources.appendChild(gold);
+
+    const essence = createElement("span", "run-resources__item");
+    registerResourceDisplay("essence", essence);
+    resources.appendChild(essence);
+
+    const consumables = createElement("span", "run-resources__item");
+    registerResourceDisplay("consumables", consumables);
+    resources.appendChild(consumables);
+
+    tracker.appendChild(resources);
+    tracker.appendChild(createInventoryButton(ctx));
+
+    updateResourceDisplays();
+    return tracker;
+  }
+
+  function closeInventoryPanel() {
+    if (!state.inventoryView) {
+      return;
+    }
+    const { overlay, handleKeydown } = state.inventoryView;
+    if (overlay && overlay.parentElement) {
+      overlay.parentElement.removeChild(overlay);
+    }
+    if (handleKeydown) {
+      document.removeEventListener("keydown", handleKeydown);
+    }
+    state.inventoryView = null;
+  }
+
+  function refreshInventoryPanel(ctxOverride) {
+    const view = state.inventoryView;
+    if (!view || !view.content) {
+      return;
+    }
+    const ctx = ctxOverride || view.ctx;
+    const content = view.content;
+    content.replaceChildren();
+
+    const summary = createElement(
+      "p",
+      "inventory-panel__summary",
+      `Essence ${Math.max(0, Math.round(state.playerEssence || 0))}/${Math.round(
+        state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence
+      )} • Gold ${state.playerGold || 0}`
+    );
+    content.appendChild(summary);
+
+    const memoriesSection = createElement("section", "inventory-section");
+    const memoriesTitle = createElement("h3", "inventory-section__title", "Memories");
+    const memoryList = createElement("ul", "inventory-list inventory-list--memories");
+    if (Array.isArray(state.playerMemories) && state.playerMemories.length > 0) {
+      state.playerMemories.forEach((key) => {
+        const memory = MEMORY_MAP.get(key);
+        const label = memory ? memory.name : key;
+        const item = createElement("li", "inventory-list__item", label);
+        item.title = memory?.description || label;
+        memoryList.appendChild(item);
+      });
+    } else {
+      memoryList.appendChild(
+        createElement("li", "inventory-list__item inventory-list__item--empty", "No memories collected yet.")
+      );
+    }
+    memoriesSection.append(memoriesTitle, memoryList);
+    content.appendChild(memoriesSection);
+
+    const relicSection = createElement("section", "inventory-section");
+    const relicTitle = createElement("h3", "inventory-section__title", "Relics");
+    const relicList = createElement("ul", "inventory-list inventory-list--relics");
+    if (Array.isArray(state.playerRelics) && state.playerRelics.length > 0) {
+      state.playerRelics.forEach((key) => {
+        const relic = RELIC_MAP.get(key);
+        const item = createElement("li", "inventory-list__item");
+        if (relic) {
+          const token = createRelicToken(relic);
+          token.title = relic.name;
+          item.appendChild(token);
+          const text = createElement(
+            "span",
+            "inventory-list__label",
+            `${relic.name} — ${relic.description}`
+          );
+          item.appendChild(text);
+        } else {
+          item.textContent = key;
+        }
+        relicList.appendChild(item);
+      });
+    } else {
+      relicList.appendChild(
+        createElement("li", "inventory-list__item inventory-list__item--empty", "No relics claimed." )
+      );
+    }
+    relicSection.append(relicTitle, relicList);
+    content.appendChild(relicSection);
+
+    const consumableSection = createElement("section", "inventory-section");
+    const consumableTitle = createElement(
+      "h3",
+      "inventory-section__title",
+      "Consumables"
+    );
+    const consumableList = createElement(
+      "ul",
+      "inventory-list inventory-list--consumables"
+    );
+    const entries = Object.entries(state.playerConsumables || {}).filter(
+      ([, count]) => Number(count) > 0
+    );
+    if (entries.length > 0) {
+      entries.forEach(([key, count]) => {
+        const consumable = CONSUMABLE_MAP.get(key);
+        const item = createElement("li", "inventory-list__item inventory-list__item--consumable");
+        const label = createElement(
+          "span",
+          "inventory-list__label",
+          consumable ? `${consumable.name} (x${count})` : `${key} (x${count})`
+        );
+        if (consumable?.description) {
+          label.title = consumable.description;
+        }
+        item.appendChild(label);
+        if (consumable) {
+          const useButton = createElement(
+            "button",
+            "button button--ghost inventory-list__action",
+            "Use"
+          );
+          useButton.type = "button";
+          useButton.addEventListener("click", () => {
+            useConsumable(ctx || { state }, key);
+          });
+          item.appendChild(useButton);
+        }
+        consumableList.appendChild(item);
+      });
+    } else {
+      consumableList.appendChild(
+        createElement(
+          "li",
+          "inventory-list__item inventory-list__item--empty",
+          "No consumables in your satchel."
+        )
+      );
+    }
+    consumableSection.append(consumableTitle, consumableList);
+    content.appendChild(consumableSection);
+  }
+
+  function showInventoryPanel(ctx) {
+    if (state.inventoryView) {
+      refreshInventoryPanel(ctx);
+      return;
+    }
+    const overlay = createElement("div", "inventory-overlay");
+    const panel = createElement("div", "inventory-panel");
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+
+    const header = createElement("div", "inventory-panel__header");
+    const title = createElement("h2", "inventory-panel__title", "Memory Ledger");
+    const closeButton = createElement("button", "inventory-panel__close", "Close");
+    closeButton.type = "button";
+    closeButton.addEventListener("click", () => closeInventoryPanel());
+    header.append(title, closeButton);
+
+    const content = createElement("div", "inventory-panel__content");
+    panel.append(header, content);
+    overlay.append(panel);
+
+    const handleKeydown = (event) => {
+      if (event.key === "Escape") {
+        closeInventoryPanel();
+      }
+    };
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeInventoryPanel();
+      }
+    });
+    document.addEventListener("keydown", handleKeydown);
+
+    document.body.appendChild(overlay);
+    state.inventoryView = { overlay, panel, content, ctx, handleKeydown };
+    refreshInventoryPanel(ctx);
+    window.requestAnimationFrame(() => closeButton.focus());
+  }
+
+  function addGold(amount, ctx) {
+    const value = Math.round(Number(amount) || 0);
+    if (value === 0) {
+      return;
+    }
+    state.playerGold = Math.max(0, (state.playerGold || 0) + value);
+    if (ctx?.showToast) {
+      const text = value > 0 ? `You gain ${value} gold.` : `You spend ${Math.abs(value)} gold.`;
+      ctx.showToast(text);
+    }
+    updateResourceDisplays();
+  }
+
+  function addConsumable(key, count = 1, ctx) {
+    if (!key || count === 0) {
+      return;
+    }
+    state.playerConsumables = state.playerConsumables || {};
+    state.playerConsumables[key] = (state.playerConsumables[key] || 0) + count;
+    if (ctx?.showToast) {
+      const item = CONSUMABLE_MAP.get(key);
+      if (count > 0 && item) {
+        ctx.showToast(`Added ${count} × ${item.name} to your satchel.`);
+      }
+    }
+    updateResourceDisplays();
+  }
+
+  function addRelic(key, ctx) {
+    if (!key) {
+      return;
+    }
+    state.playerRelics = Array.isArray(state.playerRelics)
+      ? state.playerRelics
+      : [];
+    if (!state.playerRelics.includes(key)) {
+      state.playerRelics.push(key);
+      if (ctx?.showToast) {
+        const relic = RELIC_MAP.get(key);
+        ctx.showToast(`You claim the relic: ${relic?.name || key}.`);
+      }
+    } else if (ctx?.showToast) {
+      ctx.showToast("You already carry that relic.");
+    }
+    updateResourceDisplays();
+  }
+
+  function addMemoryToState(key, ctx) {
+    if (!key) {
+      return;
+    }
+    state.playerMemories = Array.isArray(state.playerMemories)
+      ? state.playerMemories
+      : [];
+    state.playerMemories.push(key);
+    if (ctx?.showToast) {
+      const memory = MEMORY_MAP.get(key);
+      ctx.showToast(`A new memory surfaces: ${memory?.name || key}.`);
+    }
+  }
+
+  function useConsumable(ctx, key) {
+    if (!key || !state.playerConsumables || !state.playerConsumables[key]) {
+      ctx?.showToast?.("No charges of that consumable remain.");
+      return;
+    }
+    const consumable = CONSUMABLE_MAP.get(key);
+    if (!consumable) {
+      ctx?.showToast?.("That item resists being used.");
+      return;
+    }
+    const effect = consumable.effect || {};
+    let gainedEssence = 0;
+    let message = "";
+    switch (effect.type) {
+      case "restoreEssence": {
+        const amount = Number(effect.amount) || 0;
+        if (amount > 0) {
+          const before = state.playerEssence || 0;
+          state.playerEssence = Math.min(
+            state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence,
+            before + amount
+          );
+          gainedEssence = Math.max(0, Math.round(state.playerEssence - before));
+          message =
+            gainedEssence > 0
+              ? `You restore ${gainedEssence} Essence.`
+              : "You are already at full essence.";
+        }
+        break;
+      }
+      case "gainGold": {
+        addGold(effect.amount || 0, ctx);
+        break;
+      }
+      case "grantShroudGuard": {
+        state.shroudGuardCharges = (state.shroudGuardCharges || 0) + 1;
+        message = "A protective shroud gathers around you.";
+        break;
+      }
+      default: {
+        message = "The item fizzles without effect.";
+        break;
+      }
+    }
+    state.playerConsumables[key] -= 1;
+    if (state.playerConsumables[key] <= 0) {
+      delete state.playerConsumables[key];
+    }
+    if (message && ctx?.showToast) {
+      ctx.showToast(message);
+    }
+    if (gainedEssence > 0 && state.activeCombat && state.activeCombat.status === "inProgress") {
+      state.activeCombat.player.essence = Math.min(
+        state.activeCombat.player.maxEssence,
+        state.activeCombat.player.essence + gainedEssence
+      );
+      updateCombatUI(state.activeCombat);
+    }
+    updateResourceDisplays();
   }
 
   function createMemoryDraftPacks(count = 3, optionsPerPack = 3) {
@@ -2211,17 +2790,37 @@
     }
   }
 
-  function summarizeMemoryPassives(memoryKeys = []) {
-    const summary = {
+  function createPassiveSummary() {
+    return {
       bleedBonus: 0,
+      bleedMultiplier: 1,
+      bleedHealFraction: 0,
       apCarryoverBonus: 0,
       dirgeCostReduction: 0,
       roarAppliesVulnerable: false,
       buffCostReductionWhileFaceUp: false,
+      buffCostReductionFlat: 0,
       songEssenceRegen: 0,
       laughterDamageBonus: 0,
       emptySlotCritBonus: 0,
+      lowApAttackBonus: 0,
+      buffSelfDamage: 0,
+      startTurnEssenceLoss: 0,
+      essenceCostReduction: 0,
+      convertUnusedApToEssence: false,
+      applyCycleArmor: 0,
+      cycleDamageFrequency: 0,
+      cycleDamageAmount: 0,
+      stallEnemyOnMiss: false,
+      doubleNextAttackAfterBuff: false,
+      apBonusOnEmpty: 0,
+      buffGrantsEssenceRegen: 0,
+      repeatLastActionChance: 0,
     };
+  }
+
+  function summarizeMemoryPassives(memoryKeys = []) {
+    const summary = createPassiveSummary();
     memoryKeys.forEach((key) => {
       const memory = MEMORY_MAP.get(key);
       if (!memory || !memory.passive) {
@@ -2254,6 +2853,131 @@
       }
     });
     return summary;
+  }
+
+  function summarizeRelicPassives(relicKeys = []) {
+    const summary = createPassiveSummary();
+    relicKeys.forEach((key) => {
+      const relic = RELIC_MAP.get(key);
+      if (!relic || !relic.passive) {
+        return;
+      }
+      const passive = relic.passive;
+      if (typeof passive.bleedBonus === "number") {
+        summary.bleedBonus += passive.bleedBonus;
+      }
+      if (typeof passive.bleedMultiplier === "number") {
+        summary.bleedMultiplier *= passive.bleedMultiplier;
+      }
+      if (typeof passive.bleedHealFraction === "number") {
+        summary.bleedHealFraction += passive.bleedHealFraction;
+      }
+      if (typeof passive.lowApAttackBonus === "number") {
+        summary.lowApAttackBonus += passive.lowApAttackBonus;
+      }
+      if (typeof passive.buffCostReductionFlat === "number") {
+        summary.buffCostReductionFlat += passive.buffCostReductionFlat;
+      }
+      if (typeof passive.buffSelfDamage === "number") {
+        summary.buffSelfDamage += passive.buffSelfDamage;
+      }
+      if (typeof passive.essenceCostReduction === "number") {
+        summary.essenceCostReduction += passive.essenceCostReduction;
+      }
+      if (typeof passive.startTurnEssenceLoss === "number") {
+        summary.startTurnEssenceLoss += passive.startTurnEssenceLoss;
+      }
+      if (passive.convertUnusedApToEssence) {
+        summary.convertUnusedApToEssence = true;
+      }
+      if (typeof passive.applyCycleArmor === "number") {
+        summary.applyCycleArmor += passive.applyCycleArmor;
+      }
+      if (typeof passive.cycleDamageFrequency === "number" && passive.cycleDamageFrequency > 0) {
+        summary.cycleDamageFrequency =
+          summary.cycleDamageFrequency || passive.cycleDamageFrequency;
+      }
+      if (typeof passive.cycleDamageAmount === "number" && passive.cycleDamageAmount > 0) {
+        summary.cycleDamageAmount = Math.max(
+          summary.cycleDamageAmount,
+          passive.cycleDamageAmount
+        );
+      }
+      if (passive.stallEnemyOnMiss) {
+        summary.stallEnemyOnMiss = true;
+      }
+      if (passive.doubleNextAttackAfterBuff) {
+        summary.doubleNextAttackAfterBuff = true;
+      }
+      if (typeof passive.apBonusOnEmpty === "number") {
+        summary.apBonusOnEmpty += passive.apBonusOnEmpty;
+      }
+      if (typeof passive.buffGrantsEssenceRegen === "number") {
+        summary.buffGrantsEssenceRegen += passive.buffGrantsEssenceRegen;
+      }
+      if (typeof passive.repeatLastActionChance === "number") {
+        summary.repeatLastActionChance = Math.min(
+          1,
+          summary.repeatLastActionChance + passive.repeatLastActionChance
+        );
+      }
+    });
+    return summary;
+  }
+
+  function combinePassiveSummaries(memorySummary, relicSummary) {
+    const combined = createPassiveSummary();
+    const numericKeys = [
+      "bleedBonus",
+      "apCarryoverBonus",
+      "dirgeCostReduction",
+      "songEssenceRegen",
+      "laughterDamageBonus",
+      "emptySlotCritBonus",
+      "buffCostReductionFlat",
+      "lowApAttackBonus",
+      "buffSelfDamage",
+      "startTurnEssenceLoss",
+      "essenceCostReduction",
+      "applyCycleArmor",
+      "cycleDamageAmount",
+      "apBonusOnEmpty",
+      "buffGrantsEssenceRegen",
+    ];
+    numericKeys.forEach((key) => {
+      combined[key] =
+        (combined[key] || 0) + (memorySummary[key] || 0) + (relicSummary[key] || 0);
+    });
+    combined.bleedMultiplier =
+      (memorySummary.bleedMultiplier || 1) * (relicSummary.bleedMultiplier || 1);
+    combined.bleedHealFraction =
+      (memorySummary.bleedHealFraction || 0) + (relicSummary.bleedHealFraction || 0);
+    combined.roarAppliesVulnerable = Boolean(
+      memorySummary.roarAppliesVulnerable || relicSummary.roarAppliesVulnerable
+    );
+    combined.buffCostReductionWhileFaceUp = Boolean(
+      memorySummary.buffCostReductionWhileFaceUp ||
+        relicSummary.buffCostReductionWhileFaceUp
+    );
+    combined.convertUnusedApToEssence = Boolean(
+      memorySummary.convertUnusedApToEssence ||
+        relicSummary.convertUnusedApToEssence
+    );
+    combined.stallEnemyOnMiss = Boolean(
+      memorySummary.stallEnemyOnMiss || relicSummary.stallEnemyOnMiss
+    );
+    combined.doubleNextAttackAfterBuff = Boolean(
+      memorySummary.doubleNextAttackAfterBuff ||
+        relicSummary.doubleNextAttackAfterBuff
+    );
+    combined.repeatLastActionChance = Math.min(
+      1,
+      (memorySummary.repeatLastActionChance || 0) +
+        (relicSummary.repeatLastActionChance || 0)
+    );
+    combined.cycleDamageFrequency =
+      relicSummary.cycleDamageFrequency || memorySummary.cycleDamageFrequency || 0;
+    return combined;
   }
 
   function buildActionSoupFromMemories(memoryKeys = []) {
@@ -2319,15 +3043,23 @@
   function createCombatState(ctx, { encounterType, encounter, room }) {
     ensureDefaultMemories(ctx);
     const memoryKeys = ctx.state.playerMemories.slice();
-    const passives = summarizeMemoryPassives(memoryKeys);
+    const relicKeys = Array.isArray(ctx.state.playerRelics)
+      ? ctx.state.playerRelics.slice()
+      : [];
+    const memoryPassives = summarizeMemoryPassives(memoryKeys);
+    const relicPassives = summarizeRelicPassives(relicKeys);
+    const passives = combinePassiveSummaries(memoryPassives, relicPassives);
     const soup = buildActionSoupFromMemories(memoryKeys);
 
     const player = {
       id: "player",
       side: "player",
       name: playerCharacter.name,
-      maxEssence: DEFAULT_PLAYER_STATS.maxEssence,
-      essence: DEFAULT_PLAYER_STATS.maxEssence,
+      maxEssence: ctx.state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence,
+      essence: Math.min(
+        ctx.state.playerEssence || DEFAULT_PLAYER_STATS.maxEssence,
+        ctx.state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence
+      ),
       ap: 0,
       baseApRegen: DEFAULT_PLAYER_STATS.baseApRegen,
       apRegen: DEFAULT_PLAYER_STATS.baseApRegen,
@@ -2341,6 +3073,7 @@
       pendingApBonus: 0,
       passives,
       memories: memoryKeys,
+      relics: relicKeys,
     };
     resetTempStats(player);
 
@@ -2486,6 +3219,7 @@
       continueButton,
     };
 
+    state.activeCombat = combat;
     startCombat(combat);
     return { container, footer, combat };
   }
@@ -2515,6 +3249,14 @@
     combat.turn = "player";
     logCombat(combat, `Round ${combat.round}: Your essence rallies.`);
     applyStartOfTurnStatuses(combat, combat.player, "player");
+    if (combat.player.passives.startTurnEssenceLoss) {
+      const loss = combat.player.passives.startTurnEssenceLoss;
+      combat.player.essence = Math.max(0, combat.player.essence - loss);
+      logCombat(
+        combat,
+        `The mourning veil saps ${loss} Essence as the turn begins.`
+      );
+    }
     if (combat.player.essence <= 0) {
       handleDefeat(combat);
       return;
@@ -2609,6 +3351,9 @@
       combat.player.temp.critChance +=
         combat.player.passives.emptySlotCritBonus * emptySlots;
     }
+    if (combat.player.passives.buffCostReductionFlat) {
+      combat.player.temp.buffCostReduction += combat.player.passives.buffCostReductionFlat;
+    }
     combat.player.temp.damageBonus += combat.player.passives.laughterDamageBonus || 0;
     combat.player.temp.essenceRegen += combat.player.passives.songEssenceRegen || 0;
 
@@ -2633,6 +3378,15 @@
         });
       }
     });
+
+    if (
+      combat.player.passives.buffGrantsEssenceRegen &&
+      ((combat.player.statuses &&
+        (combat.player.statuses.critBuff || combat.player.statuses.armor)) ||
+        combat.player.temp.buffCostReduction > 0)
+    ) {
+      combat.player.temp.essenceRegen += combat.player.passives.buffGrantsEssenceRegen;
+    }
   }
 
   function getActionApCost(combat, action) {
@@ -2652,11 +3406,14 @@
     return cost;
   }
 
-  function getActionEssenceCost(action) {
+  function getActionEssenceCost(combat, action) {
     if (!action || !action.cost) {
       return 0;
     }
-    return Number(action.cost.essence) || 0;
+    const passives = combat?.player?.passives || {};
+    const reduction = Number(passives.essenceCostReduction) || 0;
+    const cost = Number(action.cost.essence) || 0;
+    return Math.max(0, cost - reduction);
   }
 
   function performPlayerAction(combat, slotIndex) {
@@ -2672,7 +3429,7 @@
       return;
     }
     const apCost = getActionApCost(combat, action);
-    const essenceCost = getActionEssenceCost(action);
+    const essenceCost = getActionEssenceCost(combat, action);
 
     if (apCost > combat.player.ap) {
       logCombat(combat, "Not enough AP to perform that action.");
@@ -2691,7 +3448,13 @@
     }
 
     const result = action.effect
-      ? action.effect({ combat, actor: combat.player, target: combat.enemy, slot })
+      ? action.effect({
+          combat,
+          actor: combat.player,
+          target: combat.enemy,
+          slot,
+          apCost,
+        })
       : null;
 
     if (result && result.cancel) {
@@ -2711,12 +3474,63 @@
       combat.player.flags.lastAction = { key: action.key, name: action.name };
     }
 
+    if (action.type === "buff") {
+      if (combat.player.passives.doubleNextAttackAfterBuff) {
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.victoryBannerReady = true;
+        logCombat(combat, "Victory Banner readies your next attack.");
+      }
+      if (combat.player.passives.buffSelfDamage) {
+        const selfDamage = combat.player.passives.buffSelfDamage;
+        combat.player.essence = Math.max(0, combat.player.essence - selfDamage);
+        logCombat(combat, `The mask bites back for ${selfDamage} self-damage.`);
+        if (combat.player.essence <= 0) {
+          handleDefeat(combat);
+          return;
+        }
+      }
+    }
+
     advanceSlotChain(combat, slot, action, slotIndex);
     handleRemembranceEcho(combat);
 
     if (combat.enemy.essence <= 0) {
       handleVictory(combat);
       return;
+    }
+
+    if (
+      combat.player.passives.repeatLastActionChance > 0 &&
+      action.cost?.ap !== "variable"
+    ) {
+      const chance = combat.player.passives.repeatLastActionChance;
+      if (Math.random() < chance) {
+        const repeatCost = Math.max(0, apCost + 1);
+        if (repeatCost <= combat.player.ap) {
+          combat.player.ap -= repeatCost;
+          logCombat(combat, `Fractured Mirror repeats ${action.name}.`);
+          action.effect?.({
+            combat,
+            actor: combat.player,
+            target: combat.enemy,
+            slot: null,
+            apCost: repeatCost,
+          });
+          combat.player.history.push({
+            key: action.key,
+            name: `${action.name} (Mirror)`,
+          });
+          if (combat.enemy.essence <= 0) {
+            handleVictory(combat);
+            return;
+          }
+        } else {
+          logCombat(
+            combat,
+            "The mirror strains to repeat the action but you lack the AP."
+          );
+        }
+      }
     }
 
     applyFacingEffects(combat);
@@ -2727,6 +3541,7 @@
     if (!slot) {
       return;
     }
+    let cycled = false;
     if (!action || !action.chain) {
       slot.consumed = true;
     } else {
@@ -2734,19 +3549,63 @@
       if (action.resetChain && sequence) {
         slot.chainIndex = 0;
         slot.actionKey = sequence[0];
+        cycled = true;
       } else if (action.loopToStart && sequence) {
         slot.chainIndex = (slot.chainIndex + 1) % sequence.length;
         slot.actionKey = sequence[slot.chainIndex];
+        cycled = true;
       } else if (sequence && slot.chainIndex + 1 < sequence.length) {
         slot.chainIndex += 1;
         slot.actionKey = sequence[slot.chainIndex];
+        cycled = true;
       } else {
         slot.consumed = true;
       }
     }
 
+    if (cycled) {
+      if (combat.player.passives.applyCycleArmor) {
+        applyStatus(
+          combat.player,
+          "armor",
+          combat.player.passives.applyCycleArmor,
+          { duration: 1 }
+        );
+        logCombat(combat, "Carousel Key reinforces your defenses.");
+      }
+      if (combat.player.passives.cycleDamageFrequency) {
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.cycleCount = (combat.player.flags.cycleCount || 0) + 1;
+        if (
+          combat.player.flags.cycleCount %
+            combat.player.passives.cycleDamageFrequency ===
+            0 &&
+          combat.player.passives.cycleDamageAmount > 0
+        ) {
+          dealDamage(
+            combat,
+            combat.player,
+            combat.enemy,
+            combat.player.passives.cycleDamageAmount,
+            { source: "Carousel Lash" }
+          );
+        }
+      }
+    }
+
     if (slot.consumed || !slot.actionKey) {
       combat.actionSlots[index] = null;
+    }
+
+    if (
+      combat.player.passives.apBonusOnEmpty &&
+      combat.actionSlots.every((entry) => entry === null)
+    ) {
+      combat.player.pendingApBonus += combat.player.passives.apBonusOnEmpty;
+      logCombat(
+        combat,
+        `The burial urn promises +${combat.player.passives.apBonusOnEmpty} AP next turn.`
+      );
     }
   }
 
@@ -2782,6 +3641,17 @@
     combat.turn = "enemy";
     combat.player.pendingApBonus += combat.player.temp.nextTurnApBonus || 0;
     applyEndOfTurnStatuses(combat, combat.player);
+    if (combat.player.passives.convertUnusedApToEssence) {
+      const unspent = combat.player.ap;
+      if (unspent > 0) {
+        combat.player.ap = 0;
+        healCombatant(combat, combat.player, unspent);
+        logCombat(
+          combat,
+          `Candlelit Hourglass converts your ${unspent} unused AP into Essence.`
+        );
+      }
+    }
     combat.actionSlots = combat.actionSlots.map((slot) =>
       slot && slot.retained && !slot.consumed ? slot : null
     );
@@ -2879,16 +3749,227 @@
     }
   }
 
+  function getGoldRewardAmount(encounterType) {
+    switch (encounterType) {
+      case "elite":
+        return 35;
+      case "boss":
+        return 60;
+      default:
+        return 15;
+    }
+  }
+
+  function generateMemoryRewardOptions(ctx, count) {
+    const owned = new Set(ctx.state.playerMemories || []);
+    const pool = MEMORY_DEFINITIONS.filter((memory) => !owned.has(memory.key));
+    const fallback = pool.length >= count ? pool : MEMORY_DEFINITIONS;
+    return sampleWithoutReplacement(fallback, count);
+  }
+
+  function generateRelicRewardOptions(ctx, count) {
+    const owned = new Set(ctx.state.playerRelics || []);
+    const pool = RELIC_DEFINITIONS.filter((relic) => !owned.has(relic.key));
+    const fallback = pool.length >= count ? pool : RELIC_DEFINITIONS;
+    return sampleWithoutReplacement(fallback, count);
+  }
+
+  function grantRandomConsumable(ctx) {
+    const option = sampleWithoutReplacement(CONSUMABLE_DEFINITIONS, 1)[0];
+    if (option) {
+      addConsumable(option.key, 1, ctx);
+      return option;
+    }
+    return null;
+  }
+
+  function updateRewardContinueButton(combat) {
+    if (!combat.rewardState || !combat.dom?.continueButton) {
+      return;
+    }
+    const requireBoth = combat.rewardState.mode === "takeBoth";
+    const complete = requireBoth
+      ? combat.rewardState.memoryClaimed && combat.rewardState.relicClaimed
+      : combat.rewardState.memoryClaimed || combat.rewardState.relicClaimed;
+    combat.dom.continueButton.disabled = !complete;
+  }
+
+  function presentCombatRewards(combat) {
+    if (!combat || combat.rewardState?.presented) {
+      updateRewardContinueButton(combat);
+      return;
+    }
+    const ctx = combat.ctx;
+    const encounterType = combat.encounterType || ctx?.state?.currentEncounterType || "combat";
+    const panel = createElement("div", "combat-rewards");
+    const title = createElement("h3", "combat-rewards__title", "Rewards");
+    panel.appendChild(title);
+
+    const goldReward = getGoldRewardAmount(encounterType);
+    if (goldReward > 0) {
+      addGold(goldReward, ctx);
+      const goldRow = createElement(
+        "p",
+        "combat-rewards__detail",
+        `+${goldReward} Gold`
+      );
+      panel.appendChild(goldRow);
+    }
+
+    const rewardState = {
+      presented: true,
+      mode: encounterType === "combat" ? "chooseOne" : "takeBoth",
+      memoryClaimed: false,
+      relicClaimed: false,
+    };
+
+    const memoryOptions = generateMemoryRewardOptions(
+      ctx,
+      encounterType === "boss" ? 3 : 2
+    );
+    const relicOptions = generateRelicRewardOptions(
+      ctx,
+      encounterType === "boss" ? 3 : 2
+    );
+
+    const memoryButtons = [];
+    const relicButtons = [];
+
+    const memorySection = createElement("section", "combat-rewards__section");
+    const memoryHeader = createElement(
+      "h4",
+      "combat-rewards__heading",
+      encounterType === "combat" ? "Memory Reward (optional)" : "Choose a Memory"
+    );
+    memorySection.appendChild(memoryHeader);
+    const memoryList = createElement("div", "combat-rewards__choices");
+    if (memoryOptions.length === 0) {
+      rewardState.memoryClaimed = true;
+      memoryList.appendChild(
+        createElement("p", "combat-rewards__detail", "No memories available.")
+      );
+    } else {
+      memoryOptions.forEach((memory) => {
+        const button = createElement("button", "reward-option reward-option--memory");
+        button.type = "button";
+        button.title = memory.description;
+        button.appendChild(
+          createElement("span", "reward-option__name", memory.name)
+        );
+        button.appendChild(
+          createElement("span", "reward-option__detail", memory.description)
+        );
+        button.addEventListener("click", () => {
+          if (rewardState.memoryClaimed) {
+            return;
+          }
+          addMemoryToState(memory.key, ctx);
+          button.classList.add("is-selected");
+          memoryButtons.forEach((btn) => (btn.disabled = true));
+          rewardState.memoryClaimed = true;
+          if (rewardState.mode === "chooseOne") {
+            relicButtons.forEach((btn) => (btn.disabled = true));
+            rewardState.relicClaimed = true;
+          }
+          updateRewardContinueButton(combat);
+          ctx.updateResources?.();
+        });
+        memoryButtons.push(button);
+        memoryList.appendChild(button);
+      });
+    }
+    memorySection.appendChild(memoryList);
+    panel.appendChild(memorySection);
+
+    const relicSection = createElement("section", "combat-rewards__section");
+    const relicHeader = createElement(
+      "h4",
+      "combat-rewards__heading",
+      encounterType === "combat" ? "Relic Reward (optional)" : "Choose a Relic"
+    );
+    relicSection.appendChild(relicHeader);
+    const relicList = createElement("div", "combat-rewards__choices");
+    if (relicOptions.length === 0) {
+      rewardState.relicClaimed = true;
+      relicList.appendChild(
+        createElement("p", "combat-rewards__detail", "No relics remain to claim.")
+      );
+    } else {
+      relicOptions.forEach((relic) => {
+        const button = createElement("button", "reward-option reward-option--relic");
+        button.type = "button";
+        button.title = relic.description;
+        const token = createRelicToken(relic);
+        button.appendChild(token);
+        button.appendChild(
+          createElement("span", "reward-option__name", relic.name)
+        );
+        button.appendChild(
+          createElement("span", "reward-option__detail", relic.description)
+        );
+        button.addEventListener("click", () => {
+          if (rewardState.relicClaimed) {
+            return;
+          }
+          addRelic(relic.key, ctx);
+          button.classList.add("is-selected");
+          relicButtons.forEach((btn) => (btn.disabled = true));
+          rewardState.relicClaimed = true;
+          if (rewardState.mode === "chooseOne") {
+            memoryButtons.forEach((btn) => (btn.disabled = true));
+            rewardState.memoryClaimed = true;
+          }
+          updateRewardContinueButton(combat);
+          ctx.updateResources?.();
+        });
+        relicButtons.push(button);
+        relicList.appendChild(button);
+      });
+    }
+    relicSection.appendChild(relicList);
+    panel.appendChild(relicSection);
+
+    if (encounterType !== "combat") {
+      const bonusConsumable = grantRandomConsumable(ctx);
+      if (bonusConsumable) {
+        panel.appendChild(
+          createElement(
+            "p",
+            "combat-rewards__detail",
+            `Bonus: ${bonusConsumable.name} added to your satchel.`
+          )
+        );
+      }
+    }
+
+    combat.rewardState = rewardState;
+    combat.rewardState.memoryButtons = memoryButtons;
+    combat.rewardState.relicButtons = relicButtons;
+
+    if (combat.dom?.footer) {
+      combat.dom.footer.insertBefore(panel, combat.dom.continueButton);
+    }
+    combat.dom.rewards = panel;
+    updateRewardContinueButton(combat);
+  }
+
   function handleVictory(combat) {
     if (combat.status !== "inProgress") {
       return;
     }
     combat.status = "victory";
     logCombat(combat, `${combat.enemy.name} collapses. You are victorious!`);
+    if (combat.ctx?.state) {
+      combat.ctx.state.playerEssence = Math.max(0, Math.round(combat.player.essence));
+      combat.ctx.state.playerMaxEssence = combat.player.maxEssence;
+      combat.ctx.updateResources?.();
+    }
+    state.activeCombat = null;
     if (combat.dom.continueButton) {
-      combat.dom.continueButton.disabled = false;
+      combat.dom.continueButton.disabled = true;
       combat.dom.continueButton.textContent = "Return to the Corridor";
     }
+    presentCombatRewards(combat);
     updateCombatUI(combat);
   }
 
@@ -2898,6 +3979,11 @@
     }
     combat.status = "defeat";
     logCombat(combat, "Your essence gutters out. The manor claims another spirit.");
+    if (combat.ctx?.state) {
+      combat.ctx.state.playerEssence = 0;
+      combat.ctx.updateResources?.();
+    }
+    state.activeCombat = null;
     if (combat.dom.continueButton) {
       combat.dom.continueButton.disabled = false;
       combat.dom.continueButton.textContent = "Return to Main Menu";
@@ -2909,20 +3995,47 @@
     if (combat.status !== "inProgress") {
       return;
     }
-    const initial = amount + (actor === combat.player ? combat.player.temp.damageBonus : 0);
-    let damage = Math.max(0, initial);
+    const isPlayerActor = actor === combat.player;
+    const passives = combat.player?.passives || {};
+    const actionDef = options.actionKey ? ACTION_DEFINITIONS[options.actionKey] : null;
+    let actionApCost = options.apCost;
+    if (
+      typeof actionApCost === "undefined" &&
+      actionDef &&
+      actionDef.cost &&
+      actionDef.cost.ap !== "variable"
+    ) {
+      actionApCost = Number(actionDef.cost.ap) || 0;
+    }
+    const isAttackAction = Boolean(
+      options.forceAttack || (actionDef && actionDef.type === "attack")
+    );
+    let baseAmount = amount;
+    if (isPlayerActor && passives.lowApAttackBonus && actionApCost === 1) {
+      baseAmount += passives.lowApAttackBonus;
+    }
+
+    let damage = Math.max(0, baseAmount + (isPlayerActor ? combat.player.temp.damageBonus : 0));
     let isCrit = false;
     const vulnerableStacks = getStatusStacks(target, "vulnerable");
     if (vulnerableStacks > 0) {
       damage = Math.round(damage * 1.5);
     }
+    if (isPlayerActor && isAttackAction && combat.player.flags?.victoryBannerReady) {
+      damage = Math.round(damage * 2);
+      combat.player.flags.victoryBannerReady = false;
+      logCombat(combat, "Victory Banner ignites your next strike.");
+    }
+
+    let attackMissed = false;
     if (target.statuses?.dodge) {
       target.statuses.dodge -= 1;
       logCombat(combat, `${target.name} dodges the attack.`);
       showFloatingText(combat, combat.dom[`${target.side}Panel`], "Dodge", "info");
-      return;
+      attackMissed = true;
     }
-    if (actor === combat.player) {
+
+    if (!attackMissed && isPlayerActor) {
       const critChance =
         combat.player.baseCritChance + combat.player.temp.critChance + getStatusStacks(actor, "critBuff");
       if (Math.random() * 100 < critChance) {
@@ -2934,7 +4047,7 @@
       });
     }
 
-    if (target.block) {
+    if (!attackMissed && target.block) {
       const absorbed = Math.min(target.block, damage);
       target.block -= absorbed;
       damage -= absorbed;
@@ -2942,7 +4055,7 @@
         logCombat(combat, `${target.name} blocks ${absorbed} damage.`);
       }
     }
-    if (target.armor) {
+    if (!attackMissed && target.armor) {
       const mitigated = Math.min(target.armor, damage);
       damage -= mitigated;
       if (mitigated > 0) {
@@ -2950,8 +4063,17 @@
       }
     }
 
-    if (damage <= 0) {
+    if (!attackMissed && damage <= 0) {
       logCombat(combat, `${options.source || "The attack"} is deflected.`);
+      attackMissed = true;
+    }
+
+    if (attackMissed) {
+      if (actor.side === "enemy" && passives.stallEnemyOnMiss) {
+        actor.flags = actor.flags || {};
+        actor.flags.stalled = (actor.flags.stalled || 0) + 1;
+        logCombat(combat, `${actor.name} staggers, losing their next action.`);
+      }
       return;
     }
 
@@ -3041,12 +4163,28 @@
     }
     const statuses = combatant.statuses;
     if (statuses.bleed && statuses.bleed.stacks > 0) {
-      const bonus = side === "enemy" ? combat.player.passives.bleedBonus || 0 : 0;
-      const bleedDamage = statuses.bleed.stacks + bonus;
+      const passives = combat.player.passives || {};
+      const bonus = side === "enemy" ? passives.bleedBonus || 0 : 0;
+      const multiplier = side === "enemy" ? passives.bleedMultiplier || 1 : 1;
+      const healFraction = side === "enemy" ? passives.bleedHealFraction || 0 : 0;
+      const bleedDamage = Math.max(
+        0,
+        Math.round((statuses.bleed.stacks + bonus) * multiplier)
+      );
       logCombat(combat, `${combatant.name} bleeds for ${bleedDamage}.`);
-      dealDamage(combat, side === "enemy" ? combat.player : combat.enemy, combatant, bleedDamage, {
-        source: "Bleed",
-      });
+      dealDamage(
+        combat,
+        side === "enemy" ? combat.player : combat.enemy,
+        combatant,
+        bleedDamage,
+        { source: "Bleed" }
+      );
+      if (side === "enemy" && healFraction > 0 && bleedDamage > 0) {
+        const healAmount = Math.round(bleedDamage * healFraction);
+        if (healAmount > 0) {
+          healCombatant(combat, combat.player, healAmount);
+        }
+      }
       statuses.bleed.stacks = Math.max(0, statuses.bleed.stacks - 1);
       if (statuses.bleed.stacks <= 0) {
         delete statuses.bleed;
@@ -3143,7 +4281,9 @@
     if (!combat.dom || !combat.dom.statsPanel) {
       return;
     }
-    combat.dom.statsPanel.textContent = `Essence ${combat.player.essence}/${combat.player.maxEssence} • AP ${combat.player.ap}/${combat.player.apCarryoverMax}`;
+    const gold = combat.ctx?.state?.playerGold || 0;
+    combat.dom.statsPanel.textContent =
+      `Essence ${combat.player.essence}/${combat.player.maxEssence} • AP ${combat.player.ap}/${combat.player.apCarryoverMax} • Gold ${gold}`;
   }
 
   function updateCombatantPanel(combat, combatant, statsElement, statusElement) {
@@ -3225,7 +4365,7 @@
       return button;
     }
     const apCost = getActionApCost(combat, action);
-    const essenceCost = getActionEssenceCost(action);
+    const essenceCost = getActionEssenceCost(combat, action);
     const header = createElement("div", "action-button__header");
     const icon = createElement("span", "action-button__icon");
     icon.dataset.emotion = action.emotion || "neutral";
@@ -3426,11 +4566,14 @@
     const screenDef = screens[screenKey];
     if (!screenDef) return;
 
+    resetResourceDisplayRegistry();
+
     const context = {
       state,
       transitionTo,
       showToast,
       options,
+      updateResources: updateResourceDisplays,
     };
 
     const screenContent = screenDef.render(context);
@@ -3446,6 +4589,8 @@
     if (screenKey === "corridor") {
       state.inRun = true;
     }
+
+    updateResourceDisplays();
   }
 
   function preloadImages(imageList) {
