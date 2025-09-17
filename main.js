@@ -131,10 +131,36 @@
   ];
 
   const ACTION_SEQUENCES = {
-    brawler: ["strike", "grapple", "throw"],
-    festival: ["festivalLight", "sparks"],
-    fatigue: ["fatigue", "stumble", "breakthrough"],
+    angerCore: ["strike", "grapple", "throw"],
+    fearCore: ["guard", "brace", "counter"],
+    joyCore: ["spark", "festivalLight", "elation"],
+    sadnessCore: ["burden", "wither", "breakthrough"],
   };
+
+  function createCoreContribution(chainKey, weightPerAction) {
+    const actions = ACTION_SEQUENCES[chainKey] || [];
+    const totalWeight = weightPerAction * actions.length;
+    return createMultiCoreContribution([chainKey], totalWeight);
+  }
+
+  function createMultiCoreContribution(chainKeys, totalWeight) {
+    const contributions = [];
+    const totalActions = chainKeys.reduce(
+      (sum, key) => sum + (ACTION_SEQUENCES[key]?.length || 0),
+      0
+    );
+    if (totalActions <= 0 || totalWeight <= 0) {
+      return contributions;
+    }
+    const weightPerAction = totalWeight / totalActions;
+    chainKeys.forEach((key) => {
+      const actions = ACTION_SEQUENCES[key] || [];
+      actions.forEach((actionKey) => {
+        contributions.push({ action: actionKey, weight: weightPerAction });
+      });
+    });
+    return contributions;
+  }
 
   const ACTION_DEFINITIONS = {
     strike: {
@@ -145,9 +171,9 @@
       type: "attack",
       baseDamage: 6,
       description: "Deal 6 damage.",
-      chain: { key: "brawler", index: 0 },
+      chain: { key: "angerCore", index: 0 },
       facingEffect(combat) {
-        combat.player.temp.critChance += 5;
+        combat.player.temp.critChance += 10;
       },
       effect: ({ combat, actor, target }) => {
         dealDamage(combat, actor, target, 6, {
@@ -162,19 +188,21 @@
       name: "Grapple",
       emotion: "anger",
       cost: { ap: 2, essence: 0 },
-      type: "control",
-      baseDamage: 0,
-      description: "Restrain the target; they cannot cycle actions next turn.",
-      chain: { key: "brawler", index: 1 },
+      type: "attack",
+      baseDamage: 3,
+      description: "Deal 3 damage and apply Restrained (1).",
+      chain: { key: "angerCore", index: 1 },
       facingEffect(combat) {
-        combat.player.temp.armor += 2;
+        combat.player.armor = (combat.player.armor || 0) + 1;
       },
       effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 3, {
+          source: "Grapple",
+          actionKey: "grapple",
+          apCost: 2,
+        });
         applyStatus(target, "restrained", 1, { duration: 1 });
-        logCombat(
-          combat,
-          `${actor.name} restrains ${target.name}, preventing cycling next turn.`
-        );
+        logCombat(combat, `${target.name} is restrained.`);
       },
     },
     throw: {
@@ -183,16 +211,33 @@
       emotion: "anger",
       cost: { ap: 3, essence: 0 },
       type: "attack",
-      baseDamage: 12,
-      description: "Deal 12 damage; +6 if the target is restrained.",
-      chain: { key: "brawler", index: 2 },
+      baseDamage: 10,
+      description: "Deal 10 damage. +6 damage if the target is Restrained.",
+      chain: { key: "angerCore", index: 2 },
       loopToStart: true,
       effect: ({ combat, actor, target }) => {
         const bonus = hasStatus(target, "restrained") ? 6 : 0;
-        dealDamage(combat, actor, target, 12 + bonus, {
+        dealDamage(combat, actor, target, 10 + bonus, {
           source: "Throw",
           actionKey: "throw",
           apCost: 3,
+        });
+      },
+    },
+    uppercut: {
+      key: "uppercut",
+      name: "Uppercut",
+      emotion: "anger",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 8,
+      description: "Deal 8 damage. If target is Restrained, deal +8 damage.",
+      effect: ({ combat, actor, target }) => {
+        const restrainedBonus = hasStatus(target, "restrained") ? 8 : 0;
+        dealDamage(combat, actor, target, 8 + restrainedBonus, {
+          source: "Uppercut",
+          actionKey: "uppercut",
+          apCost: 2,
         });
       },
     },
@@ -202,10 +247,10 @@
       emotion: "anger",
       cost: { ap: 2, essence: 0 },
       type: "attack",
-      baseDamage: 8,
-      description: "Deal 8 damage and apply Bleed (2).",
+      baseDamage: 6,
+      description: "Deal 6 damage and apply Bleed (2).",
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 8, {
+        dealDamage(combat, actor, target, 6, {
           source: "Bloodlash",
           actionKey: "bloodlash",
           apCost: 2,
@@ -214,122 +259,151 @@
         logCombat(combat, `${target.name} suffers Bleed (2).`);
       },
     },
-    roar: {
-      key: "roar",
-      name: "Roar",
-      emotion: "anger",
-      cost: { ap: 1, essence: 0 },
-      type: "utility",
-      baseDamage: 0,
-      description: "Force all enemy action slots to cycle once.",
-      effect: ({ combat, actor, target }) => {
-        advanceEnemyMove(target, 1);
-        applyStatus(target, "shaken", 1, { duration: 1 });
-        logCombat(
-          combat,
-          `${actor.name}'s roar unsettles ${target.name}, scrambling their next move.`
-        );
-      },
-    },
-    smash: {
-      key: "smash",
-      name: "Smash",
+    feastRoar: {
+      key: "feastRoar",
+      name: "Feast Roar",
       emotion: "anger",
       cost: { ap: 3, essence: 0 },
-      type: "attack",
-      baseDamage: 12,
-      description: "Deal 12 damage; +6 if the target has Bleed.",
-      effect: ({ combat, actor, target }) => {
-        const bleedStacks = getStatusStacks(target, "bleed");
-        const bonus = bleedStacks > 0 ? 6 : 0;
-        dealDamage(combat, actor, target, 12 + bonus, {
-          source: "Smash",
-          actionKey: "smash",
-          apCost: 3,
-        });
-      },
-    },
-    overdrive: {
-      key: "overdrive",
-      name: "Overdrive",
-      emotion: "anger",
-      cost: { ap: "variable", essence: 0 },
-      type: "attack",
+      type: "buff",
       baseDamage: 0,
-      description: "Spend remaining AP to deal 3× AP spent as damage.",
-      facingEffect(combat) {
-        combat.player.temp.apRegen += 1;
-      },
-      effect: ({ combat, actor, target }) => {
-        const apSpent = Math.max(0, actor.ap);
-        if (apSpent <= 0) {
-          logCombat(combat, "No AP remains for Overdrive.");
-          return { cancel: true };
-        }
-        const damage = apSpent * 3;
-        actor.ap = 0;
-        dealDamage(combat, actor, target, damage, {
-          source: "Overdrive",
-          actionKey: "overdrive",
-          apCost: apSpent,
-        });
-        logCombat(
-          combat,
-          `${actor.name} channels ${apSpent} AP into Overdrive for ${damage} damage.`
+      description: "All attacks deal +50% damage this turn.",
+      effect: ({ combat }) => {
+        combat.player.temp.damageMultiplier = Math.max(
+          combat.player.temp.damageMultiplier,
+          1.5
         );
-        return { spentCustomAp: apSpent };
+        logCombat(combat, "Your attacks are empowered by the feast roar.");
       },
     },
-    etherealShroud: {
-      key: "etherealShroud",
-      name: "Ethereal Shroud",
+    guard: {
+      key: "guard",
+      name: "Guard",
       emotion: "fear",
-      cost: { ap: 2, essence: 0 },
+      cost: { ap: 1, essence: 0 },
       type: "defense",
       baseDamage: 0,
-      description: "Gain Block (8). This action is retained until used.",
-      retained: true,
+      description: "Gain Block (6). Facing: Retaliate (2).",
+      chain: { key: "fearCore", index: 0 },
       facingEffect(combat) {
-        combat.player.temp.armor += 2;
-      },
-      effect: ({ combat, actor }) => {
-        actor.block = (actor.block || 0) + 8;
-        logCombat(combat, `${actor.name} gains an ethereal shroud (Block 8).`);
-      },
-    },
-    counterguard: {
-      key: "counterguard",
-      name: "Counterguard",
-      emotion: "fear",
-      cost: { ap: 2, essence: 0 },
-      type: "defense",
-      baseDamage: 0,
-      description: "Gain Block (6). If all damage is blocked, retaliate for 5.",
-      facingEffect(combat) {
-        combat.player.temp.retaliateMultiplier = Math.max(
-          combat.player.temp.retaliateMultiplier,
-          2
-        );
+        combat.player.temp.retaliateDamage += 2;
       },
       effect: ({ combat, actor }) => {
         actor.block = (actor.block || 0) + 6;
-        actor.flags = actor.flags || {};
-        actor.flags.counterguard = 5;
-        logCombat(combat, `${actor.name} prepares to counter with Counterguard.`);
+        logCombat(combat, `${actor.name} raises their guard (Block 6).`);
       },
     },
-    stall: {
-      key: "stall",
-      name: "Stall",
+    brace: {
+      key: "brace",
+      name: "Brace",
       emotion: "fear",
-      cost: { ap: 1, essence: 0 },
-      type: "control",
+      cost: { ap: 2, essence: 0 },
+      type: "defense",
       baseDamage: 0,
-      description: "Force the enemy to delay its next action.",
-      effect: ({ combat, target }) => {
-        target.flags = target.flags || {};
-        target.flags.stalled = (target.flags.stalled || 0) + 1;
-        logCombat(combat, `${target.name} hesitates, their next action delayed.`);
+      description: "Gain Armor (2) and Block (6).",
+      chain: { key: "fearCore", index: 1 },
+      effect: ({ combat, actor }) => {
+        actor.block = (actor.block || 0) + 6;
+        applyStatus(actor, "armor", 2, { duration: 2 });
+        logCombat(combat, `${actor.name} braces behind solid defenses.`);
+      },
+    },
+    counter: {
+      key: "counter",
+      name: "Counter",
+      emotion: "fear",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 8,
+      description: "Deal 8 damage. If you blocked since last turn, apply Dazed (1).",
+      chain: { key: "fearCore", index: 2 },
+      loopToStart: true,
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 8, {
+          source: "Counter",
+          actionKey: "counter",
+          apCost: 3,
+        });
+        if (actor.flags?.blockedSinceLastTurn) {
+          applyStatus(target, "dazed", 1, { duration: 1 });
+          target.flags = target.flags || {};
+          target.flags.pendingDaze = (target.flags.pendingDaze || 0) + 1;
+          logCombat(combat, `${target.name} reels, becoming Dazed.`);
+        }
+      },
+    },
+    towerShield: {
+      key: "towerShield",
+      name: "Tower Shield",
+      emotion: "fear",
+      cost: { ap: 2, essence: 0 },
+      type: "defense",
+      baseDamage: 0,
+      description: "Gain Block (10). Facing: Retaliate (3).",
+      facingEffect(combat) {
+        combat.player.temp.retaliateDamage += 3;
+      },
+      effect: ({ combat, actor }) => {
+        actor.block = (actor.block || 0) + 10;
+        logCombat(combat, `${actor.name} shelters behind a tower shield (Block 10).`);
+      },
+    },
+    ironBar: {
+      key: "ironBar",
+      name: "Iron Bar",
+      emotion: "fear",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 6,
+      description: "Deal 6 damage. If you have Block, apply Dazed (1).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 6, {
+          source: "Iron Bar",
+          actionKey: "ironBar",
+          apCost: 2,
+        });
+        if ((actor.block || 0) > 0) {
+          applyStatus(target, "dazed", 1, { duration: 1 });
+          target.flags = target.flags || {};
+          target.flags.pendingDaze = (target.flags.pendingDaze || 0) + 1;
+          logCombat(combat, `${target.name} is dazed by the iron blow.`);
+        }
+      },
+    },
+    pledgeStrike: {
+      key: "pledgeStrike",
+      name: "Pledge Strike",
+      emotion: "fear",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 10,
+      description: "Deal 10 damage and gain Armor (2).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 10, {
+          source: "Pledge Strike",
+          actionKey: "pledgeStrike",
+          apCost: 3,
+        });
+        applyStatus(actor, "armor", 2, { duration: 2 });
+      },
+    },
+    spark: {
+      key: "spark",
+      name: "Spark",
+      emotion: "joy",
+      cost: { ap: 1, essence: 0 },
+      type: "attack",
+      baseDamage: 4,
+      description: "Deal 4 damage to all enemies.",
+      chain: { key: "joyCore", index: 0 },
+      facingEffect(combat) {
+        combat.player.temp.critChance += 5;
+      },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 4, {
+          source: "Spark",
+          actionKey: "spark",
+          apCost: 1,
+        });
       },
     },
     festivalLight: {
@@ -339,29 +413,44 @@
       cost: { ap: 2, essence: 0 },
       type: "buff",
       baseDamage: 0,
-      description: "Gain +10% Crit Chance for 2 turns.",
-      chain: { key: "festival", index: 0 },
+      description: "Allies gain +1 AP this turn.",
+      chain: { key: "joyCore", index: 1 },
       effect: ({ combat, actor }) => {
-        applyStatus(actor, "critBuff", 10, { duration: 2 });
-        logCombat(combat, `${actor.name}'s strikes glow with festival light.`);
+        actor.ap += 1;
+        logCombat(combat, `${actor.name} is invigorated by festival light (+1 AP).`);
       },
     },
-    sparks: {
-      key: "sparks",
-      name: "Sparks",
+    elation: {
+      key: "elation",
+      name: "Elation",
       emotion: "joy",
-      cost: { ap: 2, essence: 0 },
+      cost: { ap: 3, essence: 0 },
       type: "attack",
-      baseDamage: 5,
-      description: "Deal 5 damage to the enemy.",
-      chain: { key: "festival", index: 1 },
+      baseDamage: 8,
+      description: "Heal 5 Essence and deal 8 damage to a random foe.",
+      chain: { key: "joyCore", index: 2 },
       loopToStart: true,
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 5, {
-          source: "Sparks",
-          actionKey: "sparks",
-          apCost: 2,
+        healCombatant(combat, actor, 5);
+        dealDamage(combat, actor, target, 8, {
+          source: "Elation",
+          actionKey: "elation",
+          apCost: 3,
         });
+      },
+    },
+    songOfTriumph: {
+      key: "songOfTriumph",
+      name: "Song of Triumph",
+      emotion: "joy",
+      cost: { ap: 2, essence: 0 },
+      type: "buff",
+      baseDamage: 0,
+      description: "Allies gain +1% Crit and +1 Essence Regen for 1 turn.",
+      effect: ({ combat, actor }) => {
+        applyStatus(actor, "critBuff", 1, { duration: 1 });
+        actor.temp.essenceRegen += 1;
+        logCombat(combat, `${actor.name} sings a triumphant song.`);
       },
     },
     cheer: {
@@ -369,81 +458,67 @@
       name: "Cheer",
       emotion: "joy",
       cost: { ap: 1, essence: 0 },
-      type: "buff",
-      baseDamage: 0,
-      description: "Gain +2 AP for this turn only.",
-      facingEffect(combat) {
-        combat.player.temp.buffCostReduction += 1;
-      },
-      effect: ({ combat, actor }) => {
-        actor.ap += 2;
-        logCombat(combat, `${actor.name} rallies, gaining 2 temporary AP.`);
-      },
-    },
-    songOfTriumph: {
-      key: "songOfTriumph",
-      name: "Song of Triumph",
-      emotion: "joy",
-      cost: { ap: 3, essence: 0 },
-      type: "buff",
-      baseDamage: 0,
-      description: "Grant +2 Armor, +10% Crit Chance, +1 Speed for 1 turn.",
-      facingEffect(combat) {
-        combat.player.temp.essenceRegen += 1;
-      },
-      effect: ({ combat, actor }) => {
-        applyStatus(actor, "armor", 2, { duration: 1 });
-        applyStatus(actor, "critBuff", 10, { duration: 1 });
-        actor.temp.nextTurnApBonus += 1;
-        logCombat(combat, `${actor.name} sings a triumphant song, bolstering their spirit.`);
-      },
-    },
-    laughter: {
-      key: "laughter",
-      name: "Laughter",
-      emotion: "joy",
-      cost: { ap: 1, essence: 0 },
       type: "heal",
       baseDamage: 0,
-      description: "Heal 3 Essence.",
+      description: "Heal 3 Essence. Facing: +5% Crit.",
       facingEffect(combat) {
-        combat.player.temp.endOfTurnHealing += 1;
-        combat.player.temp.damageBonus += 1;
+        combat.player.temp.critChance += 5;
       },
       effect: ({ combat, actor }) => {
         healCombatant(combat, actor, 3);
       },
     },
-    fatigue: {
-      key: "fatigue",
-      name: "Fatigue",
-      emotion: "sadness",
-      cost: { ap: 2, essence: 0 },
-      type: "penalty",
-      baseDamage: 0,
-      description: "While face-up, reduce AP regeneration by 1.",
-      chain: { key: "fatigue", index: 0 },
-      facingEffect(combat) {
-        combat.player.temp.apRegen -= 1;
-      },
-      effect: ({ combat }) => {
-        logCombat(
-          combat,
-          "Fatigue weighs on you. Cycle through the chain to reach Breakthrough."
-        );
+    lanternGlow: {
+      key: "lanternGlow",
+      name: "Lantern Glow",
+      emotion: "joy",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 7,
+      description: "Deal 7 AoE damage and heal 5 Essence.",
+      effect: ({ combat, actor, target }) => {
+        healCombatant(combat, actor, 5);
+        dealDamage(combat, actor, target, 7, {
+          source: "Lantern Glow",
+          actionKey: "lanternGlow",
+          apCost: 3,
+        });
       },
     },
-    stumble: {
-      key: "stumble",
-      name: "Stumble",
+    burden: {
+      key: "burden",
+      name: "Burden",
+      emotion: "sadness",
+      cost: { ap: 1, essence: 0 },
+      type: "attack",
+      baseDamage: 2,
+      description: "Deal 2 damage and apply Fatigue (1).",
+      chain: { key: "sadnessCore", index: 0 },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 2, {
+          source: "Burden",
+          actionKey: "burden",
+          apCost: 1,
+        });
+        applyStatus(target, "fatigue", 1, { duration: 2 });
+      },
+    },
+    wither: {
+      key: "wither",
+      name: "Wither",
       emotion: "sadness",
       cost: { ap: 2, essence: 0 },
-      type: "penalty",
-      baseDamage: 0,
-      description: "No effect other than advancing the chain.",
-      chain: { key: "fatigue", index: 1 },
-      effect: ({ combat }) => {
-        logCombat(combat, "You stumble forward, inching toward a breakthrough.");
+      type: "attack",
+      baseDamage: 5,
+      description: "Deal 5 damage and apply Bleed (2).",
+      chain: { key: "sadnessCore", index: 1 },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 5, {
+          source: "Wither",
+          actionKey: "wither",
+          apCost: 2,
+        });
+        applyStatus(target, "bleed", 2, { duration: 3 });
       },
     },
     breakthrough: {
@@ -452,9 +527,9 @@
       emotion: "sadness",
       cost: { ap: 3, essence: 5 },
       type: "attack",
-      baseDamage: 20,
-      description: "Deal 20 damage. Costs 5 Essence.",
-      chain: { key: "fatigue", index: 2 },
+      baseDamage: 12,
+      description: "Deal 12 damage. If the foe is bleeding or fatigued, gain +2 AP next turn.",
+      chain: { key: "sadnessCore", index: 2 },
       resetChain: true,
       effect: ({ combat, actor, target }) => {
         if (actor.essence < 5) {
@@ -462,81 +537,352 @@
           return { cancel: true };
         }
         actor.essence -= 5;
-        dealDamage(combat, actor, target, 20, {
+        dealDamage(combat, actor, target, 12, {
           source: "Breakthrough",
           actionKey: "breakthrough",
           apCost: 3,
         });
+        if (hasStatus(target, "bleed") || hasStatus(target, "fatigue")) {
+          combat.player.pendingApBonus = (combat.player.pendingApBonus || 0) + 2;
+          logCombat(combat, "Momentum surges toward next turn (+2 AP).");
+        }
       },
     },
     dirge: {
       key: "dirge",
       name: "Dirge",
       emotion: "sadness",
-      cost: { ap: 4, essence: 0 },
+      cost: { ap: 3, essence: 0 },
       type: "attack",
-      baseDamage: 8,
-      description: "Deal 8 damage and apply Bleed (2).",
+      baseDamage: 6,
+      description: "Deal 6 AoE damage and apply Fatigue (1) to all foes.",
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 8, {
+        dealDamage(combat, actor, target, 6, {
           source: "Dirge",
           actionKey: "dirge",
-          apCost: 4,
+          apCost: 3,
         });
-        applyStatus(target, "bleed", 2, { duration: 3 });
-        logCombat(combat, `${target.name} is swept into a bleeding dirge.`);
+        applyStatus(target, "fatigue", 1, { duration: 2 });
+      },
+    },
+    shroudOfLoss: {
+      key: "shroudOfLoss",
+      name: "Shroud of Loss",
+      emotion: "sadness",
+      cost: { ap: 2, essence: 0 },
+      type: "defense",
+      baseDamage: 0,
+      description: "Gain Block (8). Facing: enemies take +1 Bleed damage.",
+      facingEffect(combat) {
+        combat.player.temp.enemyBleedBonus += 1;
+      },
+      effect: ({ combat, actor }) => {
+        actor.block = (actor.block || 0) + 8;
+        logCombat(combat, `${actor.name} is wrapped in a shroud of loss (Block 8).`);
       },
     },
     remembrance: {
       key: "remembrance",
       name: "Remembrance",
       emotion: "sadness",
-      cost: { ap: 2, essence: 0 },
-      type: "utility",
-      baseDamage: 0,
-      description: "Duplicate the last action played (cost +1 AP).",
+      cost: { ap: 1, essence: 0 },
+      type: "attack",
+      baseDamage: 3,
+      description: "Deal 3 damage. Facing: +1 AP next turn.",
+      chain: { key: "sadnessCore", index: 1 },
       facingEffect(combat) {
-        if (combat.player.actionSlots.some((slot) => slot === null)) {
-          combat.player.temp.critChance += 2;
-        }
+        combat.player.temp.nextTurnApBonus += 1;
       },
-      effect: ({ combat, actor }) => {
-        const last = actor.history[actor.history.length - 1];
-        if (!last) {
-          logCombat(combat, "There is no recent action to remember.");
-          return { cancel: true };
-        }
-        actor.flags = actor.flags || {};
-        actor.flags.remembrance = last;
-        logCombat(
-          combat,
-          `${actor.name} prepares to echo ${last.name} at increased cost.`
-        );
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 3, {
+          source: "Remembrance",
+          actionKey: "remembrance",
+          apCost: 1,
+        });
       },
     },
-    shuffleMemory: {
-      key: "shuffleMemory",
-      name: "Shuffle Memory",
-      emotion: "ambiguous",
+    riposteSlash: {
+      key: "riposteSlash",
+      name: "Riposte Slash",
+      emotion: "hybrid",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 7,
+      description: "Deal 7 damage. If you blocked since last turn, deal 12 instead.",
+      effect: ({ combat, actor, target }) => {
+        const base = actor.flags?.blockedSinceLastTurn ? 12 : 7;
+        dealDamage(combat, actor, target, base, {
+          source: "Riposte Slash",
+          actionKey: "riposteSlash",
+          apCost: 3,
+        });
+      },
+    },
+    feastFireworks: {
+      key: "feastFireworks",
+      name: "Feast Fireworks",
+      emotion: "hybrid",
       cost: { ap: 2, essence: 0 },
-      type: "utility",
-      baseDamage: 0,
-      description: "Reroll a random action slot from your soup.",
-      effect: ({ combat }) => {
-        rerollRandomPlayerSlot(combat);
+      type: "attack",
+      baseDamage: 5,
+      description: "Deal 5 AoE damage. Allies gain +5% Crit this turn.",
+      effect: ({ combat, actor, target }) => {
+        combat.player.temp.critChance += 5;
+        dealDamage(combat, actor, target, 5, {
+          source: "Feast Fireworks",
+          actionKey: "feastFireworks",
+          apCost: 2,
+        });
       },
     },
-    quicken: {
-      key: "quicken",
-      name: "Quicken",
+    backstab: {
+      key: "backstab",
+      name: "Backstab",
+      emotion: "hybrid",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 6,
+      description: "Deal 6 damage; apply Bleed (1) and Fatigue (1).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 6, {
+          source: "Backstab",
+          actionKey: "backstab",
+          apCost: 2,
+        });
+        applyStatus(target, "bleed", 1, { duration: 2 });
+        applyStatus(target, "fatigue", 1, { duration: 2 });
+      },
+    },
+    blessedGuard: {
+      key: "blessedGuard",
+      name: "Blessed Guard",
+      emotion: "hybrid",
+      cost: { ap: 2, essence: 0 },
+      type: "defense",
+      baseDamage: 0,
+      description: "Gain Block (8). Heal 3 Essence to all allies.",
+      effect: ({ combat, actor }) => {
+        actor.block = (actor.block || 0) + 8;
+        healCombatant(combat, actor, 3);
+        logCombat(combat, `${actor.name} shares a blessed guard.`);
+      },
+    },
+    processionalChant: {
+      key: "processionalChant",
+      name: "Processional Chant",
+      emotion: "hybrid",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 5,
+      description: "Deal 5 AoE damage and apply Fatigue (1) to all foes.",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 5, {
+          source: "Processional Chant",
+          actionKey: "processionalChant",
+          apCost: 3,
+        });
+        applyStatus(target, "fatigue", 1, { duration: 2 });
+      },
+    },
+    mockingWeep: {
+      key: "mockingWeep",
+      name: "Mocking Weep",
+      emotion: "hybrid",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 4,
+      description: "Deal 4 damage and duplicate a random action in your set.",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 4, {
+          source: "Mocking Weep",
+          actionKey: "mockingWeep",
+          apCost: 2,
+        });
+        duplicateRandomActionSlot(combat);
+      },
+    },
+    brokenPlaything: {
+      key: "brokenPlaything",
+      name: "Broken Plaything",
       emotion: "ambiguous",
       cost: { ap: 1, essence: 0 },
+      type: "attack",
+      baseDamage: 3,
+      description: "Deal 3 damage and apply Vulnerable (1).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 3, {
+          source: "Broken Plaything",
+          actionKey: "brokenPlaything",
+          apCost: 1,
+        });
+        applyStatus(target, "vulnerable", 1, { duration: 2 });
+      },
+    },
+    vowbreaker: {
+      key: "vowbreaker",
+      name: "Vowbreaker",
+      emotion: "ambiguous",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 7,
+      description: "Deal 7 damage and apply Bleed (1).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 7, {
+          source: "Vowbreaker",
+          actionKey: "vowbreaker",
+          apCost: 2,
+        });
+        applyStatus(target, "bleed", 1, { duration: 2 });
+      },
+    },
+    carnivalFire: {
+      key: "carnivalFire",
+      name: "Carnival Fire",
+      emotion: "ambiguous",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 5,
+      description: "Deal 5 AoE damage. Facing: +1 Essence Regen.",
+      facingEffect(combat) {
+        combat.player.temp.essenceRegen += 1;
+      },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 5, {
+          source: "Carnival Fire",
+          actionKey: "carnivalFire",
+          apCost: 2,
+        });
+      },
+    },
+    bloomOfThorns: {
+      key: "bloomOfThorns",
+      name: "Bloom of Thorns",
+      emotion: "ambiguous",
+      cost: { ap: 3, essence: 0 },
+      type: "attack",
+      baseDamage: 8,
+      description: "Deal 8 damage and gain Armor (2).",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 8, {
+          source: "Bloom of Thorns",
+          actionKey: "bloomOfThorns",
+          apCost: 3,
+        });
+        applyStatus(actor, "armor", 2, { duration: 2 });
+      },
+    },
+    borrowedTime: {
+      key: "borrowedTime",
+      name: "Borrowed Time",
+      emotion: "ambiguous",
+      cost: { ap: 0, essence: 0 },
       type: "buff",
       baseDamage: 0,
-      description: "Gain +2 AP that must be spent this turn.",
+      description: "Gain +2 AP; lose 2 Essence.",
       effect: ({ combat, actor }) => {
+        if (actor.essence < 2) {
+          logCombat(combat, "You lack the essence to borrow more time.");
+          return { cancel: true };
+        }
+        actor.essence -= 2;
         actor.ap += 2;
-        logCombat(combat, `${actor.name} accelerates their plans (+2 AP).`);
+        logCombat(combat, `${actor.name} steals moments from the hourglass.`);
+      },
+    },
+    echo: {
+      key: "echo",
+      name: "Echo",
+      emotion: "ambiguous",
+      cost: { ap: "variable", essence: 0 },
+      type: "attack",
+      baseDamage: 0,
+      description: "Copy the last action at +1 AP cost and −20% damage.",
+      effect: ({ combat, actor }) => {
+        const last = actor.flags?.lastAction;
+        if (!last) {
+          logCombat(combat, "There is no action to echo.");
+          return { cancel: true };
+        }
+        const action = ACTION_DEFINITIONS[last.key];
+        if (!action) {
+          logCombat(combat, "The last action cannot be echoed.");
+          return { cancel: true };
+        }
+        const baseCost = getActionApCost(combat, action);
+        const totalCost = baseCost + 1;
+        if (totalCost > actor.ap) {
+          logCombat(combat, "You lack the AP to echo that memory.");
+          return { cancel: true };
+        }
+        actor.ap -= totalCost;
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.echoDamageModifier = 0.8;
+        combat.player.flags.echoActive = true;
+        action.effect?.({ combat, actor, target: combat.enemy, slot: null });
+        combat.player.history.push({ key: action.key, name: `${action.name} (Echo)` });
+        combat.player.flags.echoActive = false;
+        combat.player.flags.echoDamageModifier = 1;
+        return { spentCustomAp: totalCost };
+      },
+    },
+    flicker: {
+      key: "flicker",
+      name: "Flicker",
+      emotion: "ambiguous",
+      cost: { ap: 1, essence: 0 },
+      type: "attack",
+      baseDamage: 3,
+      description: "Deal 3 damage. Facing: next action costs −1 AP.",
+      facingEffect(combat) {
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.discountNextAction =
+          (combat.player.flags.discountNextAction || 0) + 1;
+      },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 3, {
+          source: "Flicker",
+          actionKey: "flicker",
+          apCost: 1,
+        });
+      },
+    },
+    greedsGamble: {
+      key: "greedsGamble",
+      name: "Greed's Gamble",
+      emotion: "ambiguous",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 5,
+      description: "Deal 5 damage. If played, gain a random consumable after combat.",
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 5, {
+          source: "Greed's Gamble",
+          actionKey: "greedsGamble",
+          apCost: 2,
+        });
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.greedsGamblePlayed = true;
+        logCombat(combat, "You wager future spoils on this strike.");
+      },
+    },
+    unseal: {
+      key: "unseal",
+      name: "Unseal",
+      emotion: "ambiguous",
+      cost: { ap: 2, essence: 0 },
+      type: "attack",
+      baseDamage: 6,
+      description: "Deal 6 damage. Facing: if in play when combat ends, gain +20 gold.",
+      facingEffect(combat) {
+        combat.player.flags = combat.player.flags || {};
+        combat.player.flags.unsealFaceUp = true;
+      },
+      effect: ({ combat, actor, target }) => {
+        dealDamage(combat, actor, target, 6, {
+          source: "Unseal",
+          actionKey: "unseal",
+          apCost: 2,
+        });
       },
     },
   };
@@ -546,132 +892,292 @@
       key: "memoryBarFight",
       name: "Memory of the Bar Fight",
       emotion: "Anger",
-      description: "Adds the Strike chain to your action soup.",
+      description: "Uppercut punishes foes already tangled in your Grapple.",
       contributions: [
-        { action: "strike", weight: 100 },
-        { action: "grapple", weight: 50 },
+        { action: "uppercut", weight: 1 },
+        ...createCoreContribution("angerCore", 0.5),
       ],
     },
     {
       key: "memoryBloodBlade",
       name: "Memory of the Blood-soaked Blade",
       emotion: "Anger",
-      description: "Bleed strikes hit harder.",
-      contributions: [{ action: "bloodlash", weight: 100 }],
-      passive: { bleedBonus: 1 },
+      description: "Bloodlash keeps pressure on so Throw lands harder.",
+      contributions: [
+        { action: "bloodlash", weight: 1 },
+        ...createCoreContribution("angerCore", 0.5),
+      ],
     },
     {
-      key: "memoryWarCry",
-      name: "Memory of the War Cry",
+      key: "memoryFeastRoar",
+      name: "Memory of the Victory Feast",
       emotion: "Anger",
-      description: "Roar applies Vulnerable while face-up.",
-      contributions: [{ action: "roar", weight: 75 }],
-      passive: { roarAppliesVulnerable: true },
+      description: "Feast Roar supercharges the whole Strike → Grapple → Throw chain.",
+      contributions: [
+        { action: "feastRoar", weight: 1 },
+        ...createCoreContribution("angerCore", 0.5),
+      ],
     },
     {
-      key: "memoryLastStand",
-      name: "Memory of the Last Stand",
-      emotion: "Anger",
-      description: "Overdrive grants +1 AP regen while face-up.",
-      contributions: [{ action: "overdrive", weight: 150 }],
+      key: "memoryWatchman",
+      name: "Memory of the Watchman",
+      emotion: "Fear",
+      description: "Tower Shield lets you punish attacks while Guard is face-up.",
+      contributions: [
+        { action: "towerShield", weight: 1 },
+        ...createCoreContribution("fearCore", 0.5),
+      ],
     },
     {
       key: "memoryLockedDoor",
       name: "Memory of the Locked Door",
       emotion: "Fear",
-      description: "Gain Ethereal Shroud for reliable defense.",
-      contributions: [{ action: "etherealShroud", weight: 100 }],
-    },
-    {
-      key: "memoryParanoidWatchman",
-      name: "Memory of the Paranoid Watchman",
-      emotion: "Fear",
-      description: "Counterguard doubles retaliation while face-up.",
-      contributions: [{ action: "counterguard", weight: 75 }],
-      passive: { counterguardRetaliateBonus: true },
-    },
-    {
-      key: "memoryHoarder",
-      name: "Memory of the Hoarder",
-      emotion: "Fear",
-      description: "Increases AP carryover cap by 3.",
-      contributions: [{ action: "stall", weight: 75 }],
-      passive: { apCarryoverBonus: 3 },
-    },
-    {
-      key: "memoryFestival",
-      name: "Memory of the Festival",
-      emotion: "Joy",
-      description: "Festival Light and Sparks form a celebratory chain.",
+      description: "Iron Bar turns stored Block into Dazed disruption.",
       contributions: [
-        { action: "festivalLight", weight: 100 },
-        { action: "sparks", weight: 50 },
+        { action: "ironBar", weight: 1 },
+        ...createCoreContribution("fearCore", 0.5),
       ],
     },
     {
-      key: "memoryToast",
-      name: "Memory of the Toast",
-      emotion: "Joy",
-      description: "Cheer reduces the cost of your buffs while face-up.",
-      contributions: [{ action: "cheer", weight: 100 }],
-      passive: { buffCostReductionWhileFaceUp: true },
+      key: "memoryOathKept",
+      name: "Memory of the Oath Kept",
+      emotion: "Fear",
+      description: "Pledge Strike adds armor while closing the defensive loop.",
+      contributions: [
+        { action: "pledgeStrike", weight: 1 },
+        ...createCoreContribution("fearCore", 0.5),
+      ],
     },
     {
       key: "memorySong",
       name: "Memory of the Song",
       emotion: "Joy",
-      description: "Song of Triumph restores Essence while face-up.",
-      contributions: [{ action: "songOfTriumph", weight: 75 }],
-      passive: { songEssenceRegen: 1 },
+      description: "Song of Triumph boosts crits and essence to fuel Spark and Elation.",
+      contributions: [
+        { action: "songOfTriumph", weight: 1 },
+        ...createCoreContribution("joyCore", 0.5),
+      ],
     },
     {
       key: "memoryLaughingCrowd",
       name: "Memory of the Laughing Crowd",
       emotion: "Joy",
-      description: "Laughter heals more while face-up.",
-      contributions: [{ action: "laughter", weight: 100 }],
-      passive: { laughterDamageBonus: 1 },
+      description: "Cheer keeps morale high and crits flowing.",
+      contributions: [
+        { action: "cheer", weight: 1 },
+        ...createCoreContribution("joyCore", 0.5),
+      ],
+    },
+    {
+      key: "memoryGoldenLantern",
+      name: "Memory of the Golden Lantern",
+      emotion: "Joy",
+      description: "Lantern Glow blends AoE chip with essence sustain.",
+      contributions: [
+        { action: "lanternGlow", weight: 1 },
+        ...createCoreContribution("joyCore", 0.5),
+      ],
     },
     {
       key: "memoryLongMarch",
       name: "Memory of the Long March",
       emotion: "Sadness",
-      description: "Adds the Fatigue chain culminating in Breakthrough.",
+      description: "Dirge spreads fatigue so Breakthrough refunds momentum.",
       contributions: [
-        { action: "fatigue", weight: 100 },
-        { action: "stumble", weight: 50 },
-        { action: "breakthrough", weight: 25 },
+        { action: "dirge", weight: 1 },
+        ...createCoreContribution("sadnessCore", 0.5),
       ],
     },
     {
-      key: "memoryBurialBell",
-      name: "Memory of the Burial Bell",
+      key: "memoryWidowsVeil",
+      name: "Memory of the Widow's Veil",
       emotion: "Sadness",
-      description: "Dirge costs less AP while face-up.",
-      contributions: [{ action: "dirge", weight: 100 }],
-      passive: { dirgeCostReduction: 1 },
+      description: "Shroud of Loss turns bleed into a grinding edge.",
+      contributions: [
+        { action: "shroudOfLoss", weight: 1 },
+        ...createCoreContribution("sadnessCore", 0.5),
+      ],
     },
     {
       key: "memoryEmptyChair",
       name: "Memory of the Empty Chair",
       emotion: "Sadness",
-      description: "Remembrance thrives in empty slots.",
-      contributions: [{ action: "remembrance", weight: 300 }],
-      passive: { emptySlotCritBonus: 2 },
+      description: "Remembrance keeps AP refunds flowing for Breakthrough turns.",
+      contributions: [
+        { action: "remembrance", weight: 1 },
+        ...createCoreContribution("sadnessCore", 0.5),
+      ],
     },
     {
-      key: "memoryTrickCandle",
-      name: "Memory of the Trick Candle",
-      emotion: "Ambiguous",
-      description: "Shuffle a random memory into place when needed.",
-      contributions: [{ action: "shuffleMemory", weight: 75 }],
+      key: "memoryDuel",
+      name: "Memory of the Duel",
+      emotion: "Hybrid",
+      description: "Riposte Slash thrives when Guard and Brace absorb blows first.",
+      contributions: [
+        { action: "riposteSlash", weight: 1 },
+        ...createCoreContribution("angerCore", 0.25),
+        ...createCoreContribution("fearCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryVictoryFeastHybrid",
+      name: "Memory of the Victory Feast (Echoes)",
+      emotion: "Hybrid",
+      description: "Feast Fireworks layers crits onto Spark chains and Throw payoffs.",
+      contributions: [
+        { action: "feastFireworks", weight: 1 },
+        ...createCoreContribution("angerCore", 0.25),
+        ...createCoreContribution("joyCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryBetrayal",
+      name: "Memory of Betrayal",
+      emotion: "Hybrid",
+      description: "Backstab seeds both Bleed and Fatigue for Breakthrough or Throw.",
+      contributions: [
+        { action: "backstab", weight: 1 },
+        ...createCoreContribution("angerCore", 0.25),
+        ...createCoreContribution("sadnessCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryVigil",
+      name: "Memory of Vigil",
+      emotion: "Hybrid",
+      description: "Blessed Guard mixes Fear walls with Joyful sustain.",
+      contributions: [
+        { action: "blessedGuard", weight: 1 },
+        ...createCoreContribution("fearCore", 0.25),
+        ...createCoreContribution("joyCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryFuneralProcession",
+      name: "Memory of Funeral Procession",
+      emotion: "Hybrid",
+      description: "Processional Chant blankets enemies in fatigue while you turtle up.",
+      contributions: [
+        { action: "processionalChant", weight: 1 },
+        ...createCoreContribution("fearCore", 0.25),
+        ...createCoreContribution("sadnessCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryMischievousTears",
+      name: "Memory of Mischievous Tears",
+      emotion: "Hybrid",
+      description: "Mocking Weep copies whichever payoff your deck craves.",
+      contributions: [
+        { action: "mockingWeep", weight: 1 },
+        ...createCoreContribution("joyCore", 0.25),
+        ...createCoreContribution("sadnessCore", 0.25),
+      ],
+    },
+    {
+      key: "memoryForgottenToy",
+      name: "Memory of the Forgotten Toy",
+      emotion: "Wild",
+      description: "Broken Plaything inflicts Vulnerable for any damage plan.",
+      contributions: [
+        { action: "brokenPlaything", weight: 1 },
+        ...createMultiCoreContribution(["angerCore", "fearCore", "sadnessCore"], 0.5),
+      ],
+    },
+    {
+      key: "memoryOathBroken",
+      name: "Memory of the Oath Broken",
+      emotion: "Wild",
+      description: "Vowbreaker layers Bleed onto whichever core you favor.",
+      contributions: [
+        { action: "vowbreaker", weight: 1 },
+        ...createMultiCoreContribution(["angerCore", "joyCore", "sadnessCore"], 0.5),
+      ],
+    },
+    {
+      key: "memoryLostCarnival",
+      name: "Memory of the Lost Carnival",
+      emotion: "Wild",
+      description: "Carnival Fire brings AoE chip and regen without leaning on Sadness.",
+      contributions: [
+        { action: "carnivalFire", weight: 1 },
+        ...createMultiCoreContribution(["angerCore", "fearCore", "joyCore"], 0.5),
+      ],
+    },
+    {
+      key: "memoryShadowedGarden",
+      name: "Memory of the Shadowed Garden",
+      emotion: "Wild",
+      description: "Bloom of Thorns grants armor without stirring Anger memories.",
+      contributions: [
+        { action: "bloomOfThorns", weight: 1 },
+        ...createMultiCoreContribution(["fearCore", "joyCore", "sadnessCore"], 0.5),
+      ],
     },
     {
       key: "memoryHourglass",
       name: "Memory of the Hourglass",
       emotion: "Ambiguous",
-      description: "Quicken grants bursts of AP.",
-      contributions: [{ action: "quicken", weight: 100 }],
+      description: "Borrowed Time trades essence for the AP to finish chains.",
+      contributions: [
+        { action: "borrowedTime", weight: 1 },
+        ...createMultiCoreContribution(
+          ["angerCore", "fearCore", "joyCore", "sadnessCore"],
+          0.5
+        ),
+      ],
+    },
+    {
+      key: "memoryFracturedMirror",
+      name: "Memory of the Fractured Mirror",
+      emotion: "Ambiguous",
+      description: "Echo doubles your last swing for a modest premium.",
+      contributions: [
+        { action: "echo", weight: 1 },
+        ...createMultiCoreContribution(
+          ["angerCore", "fearCore", "joyCore", "sadnessCore"],
+          0.5
+        ),
+      ],
+    },
+    {
+      key: "memoryTrickCandle",
+      name: "Memory of the Trick Candle",
+      emotion: "Ambiguous",
+      description: "Flicker discounts the next action so big payoffs come faster.",
+      contributions: [
+        { action: "flicker", weight: 1 },
+        ...createMultiCoreContribution(
+          ["angerCore", "fearCore", "joyCore", "sadnessCore"],
+          0.5
+        ),
+      ],
+    },
+    {
+      key: "memoryLockedChest",
+      name: "Memory of the Locked Chest",
+      emotion: "Ambiguous",
+      description: "Greed's Gamble promises a consumable if you risk the AP.",
+      contributions: [
+        { action: "greedsGamble", weight: 1 },
+        ...createMultiCoreContribution(
+          ["angerCore", "fearCore", "joyCore", "sadnessCore"],
+          0.5
+        ),
+      ],
+    },
+    {
+      key: "memoryRustedKey",
+      name: "Memory of the Rusted Key",
+      emotion: "Ambiguous",
+      description: "Unseal guarantees gold if you keep it face-up to the end.",
+      contributions: [
+        { action: "unseal", weight: 1 },
+        ...createMultiCoreContribution(
+          ["angerCore", "fearCore", "joyCore", "sadnessCore"],
+          0.5
+        ),
+      ],
     },
   ];
 
@@ -2488,11 +2994,14 @@
       memory.contributions.forEach((entry) => {
         const action = ACTION_DEFINITIONS[entry.action];
         const label = action ? action.name : entry.action;
-        const weight = entry.weight || 0;
+        const weightValue = Number(entry.weight) || 0;
+        const formattedWeight = weightValue % 1 === 0
+          ? weightValue.toFixed(0)
+          : weightValue.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
         const item = createElement(
           "li",
           "memory-card__action",
-          `${label} (${weight}%)`
+          `${label} (weight ${formattedWeight})`
         );
         list.appendChild(item);
       });
@@ -2806,8 +3315,8 @@
     if (!Array.isArray(ctx.state.playerMemories) || ctx.state.playerMemories.length === 0) {
       ctx.state.playerMemories = [
         "memoryBarFight",
-        "memoryLockedDoor",
-        "memoryFestival",
+        "memoryWatchman",
+        "memorySong",
       ];
     }
   }
@@ -3027,12 +3536,15 @@
       critChance: 0,
       apRegen: 0,
       damageBonus: 0,
+      damageMultiplier: 1,
       buffCostReduction: 0,
       essenceRegen: 0,
       endOfTurnHealing: 0,
       nextTurnApBonus: 0,
       onAttackEffects: [],
       retaliateMultiplier: 1,
+      retaliateDamage: 0,
+      enemyBleedBonus: 0,
     };
   }
 
@@ -3376,6 +3888,9 @@
 
   function applyFacingEffects(combat) {
     resetTempStats(combat.player);
+    combat.player.flags = combat.player.flags || {};
+    combat.player.flags.discountNextAction = 0;
+    combat.player.flags.unsealFaceUp = false;
     const emptySlots = combat.actionSlots.filter((slot) => slot === null).length;
     if (emptySlots > 0 && combat.player.passives.emptySlotCritBonus) {
       combat.player.temp.critChance +=
@@ -3400,12 +3915,6 @@
       }
       if (action.type === "buff" && combat.player.passives.buffCostReductionWhileFaceUp) {
         combat.player.temp.buffCostReduction += 1;
-      }
-      if (slot.actionKey === "roar" && combat.player.passives.roarAppliesVulnerable) {
-        combat.player.temp.onAttackEffects.push(({ target }) => {
-          applyStatus(target, "vulnerable", 1, { duration: 2 });
-          logCombat(combat, `${target.name} becomes Vulnerable under your roar.`);
-        });
       }
     });
 
@@ -3432,6 +3941,10 @@
     }
     if (action.key === "dirge" && combat.player.passives.dirgeCostReduction) {
       cost = Math.max(0, cost - combat.player.passives.dirgeCostReduction);
+    }
+    const discount = combat.player.flags?.discountNextAction || 0;
+    if (discount > 0) {
+      cost = Math.max(0, cost - discount);
     }
     return cost;
   }
@@ -3493,6 +4006,13 @@
       return;
     }
 
+    if (combat.player.flags.discountNextAction) {
+      combat.player.flags.discountNextAction = Math.max(
+        0,
+        combat.player.flags.discountNextAction - 1
+      );
+    }
+
     combat.player.history.push({
       key: action.key,
       name: action.name,
@@ -3500,7 +4020,7 @@
     if (combat.player.history.length > 12) {
       combat.player.history.shift();
     }
-    if (action.key !== "remembrance") {
+    if (!["remembrance", "echo"].includes(action.key)) {
       combat.player.flags.lastAction = { key: action.key, name: action.name };
     }
 
@@ -3522,7 +4042,6 @@
     }
 
     advanceSlotChain(combat, slot, action, slotIndex);
-    handleRemembranceEcho(combat);
 
     if (combat.enemy.essence <= 0) {
       handleVictory(combat);
@@ -3639,36 +4158,13 @@
     }
   }
 
-  function handleRemembranceEcho(combat) {
-    const pending = combat.player.flags?.remembrance;
-    if (!pending) {
-      return;
-    }
-    combat.player.flags.remembrance = null;
-    const action = ACTION_DEFINITIONS[pending.key];
-    if (!action) {
-      logCombat(combat, "The remembered action slips away.");
-      return;
-    }
-    const echoCost = getActionApCost(combat, action) + 1;
-    if (echoCost > combat.player.ap) {
-      logCombat(combat, "You cannot afford to echo that memory right now.");
-      return;
-    }
-    combat.player.ap -= echoCost;
-    logCombat(combat, `Remembrance echoes ${action.name}.`);
-    action.effect?.({ combat, actor: combat.player, target: combat.enemy, slot: null });
-    combat.player.history.push({ key: action.key, name: `${action.name} (Echo)` });
-    if (combat.enemy.essence <= 0) {
-      handleVictory(combat);
-    }
-  }
-
   function endPlayerTurn(combat) {
     if (combat.status !== "inProgress") {
       return;
     }
     combat.turn = "enemy";
+    combat.player.flags = combat.player.flags || {};
+    combat.player.flags.blockedSinceLastTurn = false;
     combat.player.pendingApBonus += combat.player.temp.nextTurnApBonus || 0;
     applyEndOfTurnStatuses(combat, combat.player);
     if (combat.player.passives.convertUnusedApToEssence) {
@@ -3695,6 +4191,20 @@
     }
     combat.turn = "enemy";
     applyStartOfTurnStatuses(combat, combat.enemy, "enemy");
+    const pendingDaze =
+      getStatusStacks(combat.enemy, "dazed") + (combat.enemy.flags?.pendingDaze || 0);
+    if (pendingDaze > 0) {
+      combat.enemy.flags = combat.enemy.flags || {};
+      combat.enemy.flags.stalled = (combat.enemy.flags.stalled || 0) + pendingDaze;
+      removeStatus(combat.enemy, "dazed");
+      combat.enemy.flags.pendingDaze = 0;
+      logCombat(
+        combat,
+        `${combat.enemy.name} is dazed and loses ${pendingDaze} action${
+          pendingDaze === 1 ? "" : "s"
+        }.`
+      );
+    }
     if (combat.enemy.essence <= 0) {
       handleVictory(combat);
       return;
@@ -4176,6 +4686,19 @@
       combat.ctx.state.playerEssence = Math.max(0, Math.round(combat.player.essence));
       combat.ctx.state.playerMaxEssence = combat.player.maxEssence;
       combat.ctx.updateResources?.();
+      if (combat.player.flags?.greedsGamblePlayed) {
+        const reward = getRandomItem(CONSUMABLE_DEFINITIONS);
+        if (reward) {
+          addConsumable(reward.key, 1, combat.ctx);
+          logCombat(combat, `Greed's Gamble pays out a ${reward.name}.`);
+        }
+        combat.player.flags.greedsGamblePlayed = false;
+      }
+      if (combat.player.flags?.unsealFaceUp) {
+        addGold(20, combat.ctx);
+        logCombat(combat, "The rusted key yields a cache of 20 gold.");
+        combat.player.flags.unsealFaceUp = false;
+      }
     }
     state.activeCombat = null;
     if (combat.dom.continueButton) {
@@ -4228,7 +4751,18 @@
       baseAmount += passives.lowApAttackBonus;
     }
 
-    let damage = Math.max(0, baseAmount + (isPlayerActor ? combat.player.temp.damageBonus : 0));
+    let damage = baseAmount;
+    if (isPlayerActor) {
+      damage += combat.player.temp.damageBonus;
+      damage = Math.max(0, damage);
+      damage = Math.round(damage * (combat.player.temp.damageMultiplier || 1));
+      if (combat.player.flags?.echoActive) {
+        const modifier = combat.player.flags.echoDamageModifier || 1;
+        damage = Math.round(damage * modifier);
+        combat.player.flags.echoActive = false;
+      }
+    }
+    damage = Math.max(0, damage);
     let isCrit = false;
     const vulnerableStacks = getStatusStacks(target, "vulnerable");
     if (vulnerableStacks > 0) {
@@ -4266,6 +4800,10 @@
       damage -= absorbed;
       if (absorbed > 0) {
         logCombat(combat, `${target.name} blocks ${absorbed} damage.`);
+        if (target === combat.player) {
+          target.flags = target.flags || {};
+          target.flags.blockedSinceLastTurn = true;
+        }
       }
     }
     if (!attackMissed && target.armor) {
@@ -4301,6 +4839,17 @@
       combat,
       `${options.source || "The attack"} deals ${damage} damage to ${target.name}.`
     );
+
+    if (target === combat.player && target.temp?.retaliateDamage && actor !== target) {
+      const retaliation = target.temp.retaliateDamage;
+      if (retaliation > 0) {
+        logCombat(combat, `${target.name} retaliates for ${retaliation} damage.`);
+        dealDamage(combat, target, actor, retaliation, {
+          source: "Retaliate",
+          forceAttack: true,
+        });
+      }
+    }
 
     if (target.flags?.counterguard && target.block <= 0 && actor !== target) {
       const retaliation = Math.round(target.flags.counterguard * (target.temp.retaliateMultiplier || 1));
@@ -4378,11 +4927,13 @@
     if (statuses.bleed && statuses.bleed.stacks > 0) {
       const passives = combat.player.passives || {};
       const bonus = side === "enemy" ? passives.bleedBonus || 0 : 0;
+      const tempBonus =
+        side === "enemy" ? combat.player?.temp?.enemyBleedBonus || 0 : 0;
       const multiplier = side === "enemy" ? passives.bleedMultiplier || 1 : 1;
       const healFraction = side === "enemy" ? passives.bleedHealFraction || 0 : 0;
       const bleedDamage = Math.max(
         0,
-        Math.round((statuses.bleed.stacks + bonus) * multiplier)
+        Math.round((statuses.bleed.stacks + bonus + tempBonus) * multiplier)
       );
       logCombat(combat, `${combatant.name} bleeds for ${bleedDamage}.`);
       dealDamage(
@@ -4546,6 +5097,8 @@
         return "Restrained";
       case "fatigue":
         return `Fatigue ${value}`;
+      case "dazed":
+        return `Dazed ${value}`;
       default:
         return "";
     }
@@ -4659,6 +5212,30 @@
     applyFacingEffects(combat);
     updateCombatUI(combat);
     logCombat(combat, "A new memory floods your mind.");
+  }
+
+  function duplicateRandomActionSlot(combat) {
+    const filled = combat.actionSlots
+      .map((slot, index) => (slot ? index : null))
+      .filter((index) => index !== null);
+    if (!filled.length) {
+      logCombat(combat, "Nothing answers the mocking weep.");
+      return;
+    }
+    const sourceIndex = filled[Math.floor(Math.random() * filled.length)];
+    const source = combat.actionSlots[sourceIndex];
+    const emptyIndex = combat.actionSlots.findIndex((slot) => slot === null);
+    if (emptyIndex === -1) {
+      logCombat(combat, "Your action slots are already full.");
+      return;
+    }
+    combat.actionSlots[emptyIndex] = createActionSlot(source.actionKey);
+    applyFacingEffects(combat);
+    updateCombatUI(combat);
+    logCombat(
+      combat,
+      `A mocking echo duplicates ${ACTION_DEFINITIONS[source.actionKey]?.name || "an action"}.`
+    );
   }
 
   function advanceEnemyMove(enemy, steps) {
