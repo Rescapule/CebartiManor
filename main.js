@@ -1404,12 +1404,14 @@
       key: "consumablePotionEssence",
       name: "Potion of Essence",
       description: "Restore 6 Essence (cannot exceed your maximum).",
+      icon: "✦",
       effect: { type: "restoreEssence", amount: 6 },
     },
     {
       key: "consumablePolishedCoin",
       name: "Polished Coin",
       description: "Gain 15 Gold immediately.",
+      icon: "◎",
       effect: { type: "gainGold", amount: 15 },
     },
     {
@@ -1417,6 +1419,7 @@
       name: "Shroud Talisman",
       description:
         "Negate the next cursed effect or trap that would afflict you this run.",
+      icon: "☽",
       effect: { type: "grantShroudGuard" },
     },
   ];
@@ -1424,6 +1427,8 @@
   const CONSUMABLE_MAP = new Map(
     CONSUMABLE_DEFINITIONS.map((item) => [item.key, item])
   );
+
+  const MAX_CONSUMABLE_SLOTS = 3;
 
   const DEFAULT_PLAYER_STATS = {
     maxEssence: 12,
@@ -1840,6 +1845,7 @@
     resourceDisplays: {},
     codexView: null,
     activeCombat: null,
+    activeScreenContext: null,
   };
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
@@ -1924,6 +1930,7 @@
     state.selectedDrafts = [];
     state.codexView = null;
     state.activeCombat = null;
+    state.activeScreenContext = null;
   }
 
   function clearRunState() {
@@ -1949,6 +1956,7 @@
     state.selectedDrafts = [];
     state.codexView = null;
     state.activeCombat = null;
+    state.activeScreenContext = null;
   }
 
   function shuffle(array) {
@@ -2160,6 +2168,7 @@
           viewState,
           memoryKeys: MEMORY_DEFINITIONS.map((memory) => memory.key),
           relicKeys: RELIC_DEFINITIONS.map((relic) => relic.key),
+          consumableKeys: CONSUMABLE_DEFINITIONS.map((item) => item.key),
           emptyMessage: "Entries will appear here as development continues.",
         });
 
@@ -2670,15 +2679,67 @@
     );
   }
 
-  function updateResourceDisplays() {
+  function renderConsumableDisplay(container, ctx) {
+    if (!container) {
+      return;
+    }
+    container.classList.add("run-resources__item", "run-resources__item--consumables");
+    const context = ctx || state.activeScreenContext || { state };
+
+    const label = createElement("span", "run-resources__label", "Consumables");
+    const slotRow = createElement("div", "consumable-slots");
+
+    const items = [];
+    CONSUMABLE_DEFINITIONS.forEach((definition) => {
+      const count = Number(state.playerConsumables?.[definition.key] || 0);
+      for (let i = 0; i < count; i += 1) {
+        if (items.length < MAX_CONSUMABLE_SLOTS) {
+          items.push(definition);
+        }
+      }
+    });
+
+    items.forEach((item) => {
+      const button = createElement("button", "consumable-slot");
+      button.type = "button";
+      button.title = item.name;
+      button.setAttribute("aria-label", `Use ${item.name}`);
+
+      const iconText = item.icon || item.name.charAt(0).toUpperCase();
+      const icon = createElement("span", "consumable-slot__icon", iconText);
+      icon.setAttribute("aria-hidden", "true");
+      button.appendChild(icon);
+
+      const hiddenLabel = createElement("span", "sr-only", `Use ${item.name}`);
+      button.appendChild(hiddenLabel);
+
+      button.addEventListener("click", () => {
+        const confirmText = `Use ${item.name}?`;
+        if (window.confirm(confirmText)) {
+          useConsumable(context, item.key);
+        }
+      });
+
+      slotRow.appendChild(button);
+    });
+
+    const emptySlots = Math.max(MAX_CONSUMABLE_SLOTS - items.length, 0);
+    for (let i = 0; i < emptySlots; i += 1) {
+      slotRow.appendChild(
+        createElement("span", "consumable-slot consumable-slot--empty")
+      );
+    }
+
+    container.replaceChildren(label, slotRow);
+  }
+
+  function updateResourceDisplays(ctx) {
     const goldValue = state.playerGold || 0;
     const essenceValue = Math.max(0, Math.round(state.playerEssence || 0));
     const maxEssenceValue = Math.max(
       essenceValue,
       Math.round(state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence)
     );
-    const consumableValue = getTotalConsumables();
-
     if (state.resourceDisplays?.gold) {
       state.resourceDisplays.gold.forEach((element) => {
         element.textContent = `Gold ${goldValue}`;
@@ -2691,7 +2752,7 @@
     }
     if (state.resourceDisplays?.consumables) {
       state.resourceDisplays.consumables.forEach((element) => {
-        element.textContent = `Consumables ${consumableValue}`;
+        renderConsumableDisplay(element, ctx);
       });
     }
     refreshCodexOverlay();
@@ -2742,14 +2803,14 @@
     registerResourceDisplay("essence", essence);
     resources.appendChild(essence);
 
-    const consumables = createElement("span", "run-resources__item");
+    const consumables = createElement("div", "run-resources__item run-resources__item--consumables");
     registerResourceDisplay("consumables", consumables);
     resources.appendChild(consumables);
 
     tracker.appendChild(resources);
     tracker.appendChild(createLedgerButton(ctx));
 
-    updateResourceDisplays();
+    updateResourceDisplays(ctx);
     return tracker;
   }
 
@@ -2818,6 +2879,7 @@
         summary: memory.description || "",
         detailParagraphs: detailParagraphs.filter(Boolean),
         contributions,
+        iconSymbol: memory.name.charAt(0).toUpperCase(),
       });
     });
     return entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -2850,6 +2912,31 @@
         emotionSlug: slugifyEmotion(relic.emotion),
         summary: relic.description || "",
         detailParagraphs: paragraphs.filter(Boolean),
+        iconSymbol: relic.name.charAt(0).toUpperCase(),
+      });
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function buildConsumableEntriesFromKeys(keys = []) {
+    const seen = new Set();
+    const entries = [];
+    keys.forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const consumable = CONSUMABLE_MAP.get(key);
+      if (!consumable) {
+        return;
+      }
+      entries.push({
+        key: consumable.key,
+        type: "consumable",
+        name: consumable.name,
+        summary: consumable.description || "",
+        detailParagraphs: [consumable.description].filter(Boolean),
+        iconSymbol: consumable.icon || consumable.name.charAt(0).toUpperCase(),
       });
     });
     return entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -2910,6 +2997,7 @@
     const {
       memoryKeys = [],
       relicKeys = [],
+      consumableKeys = [],
       layout = "overlay",
       viewState = {},
       emptyMessage = "No entries recorded yet.",
@@ -2917,7 +3005,8 @@
 
     const memoryEntries = buildMemoryEntriesFromKeys(memoryKeys);
     const relicEntries = buildRelicEntriesFromKeys(relicKeys);
-    const allEntries = [...memoryEntries, ...relicEntries];
+    const consumableEntries = buildConsumableEntriesFromKeys(consumableKeys);
+    const allEntries = [...memoryEntries, ...relicEntries, ...consumableEntries];
 
     target.replaceChildren();
 
@@ -2957,21 +3046,25 @@
           entry.emotionSlug ? `codex-detail__icon--${entry.emotionSlug}` : ""
         }`
       );
-      icon.textContent = entry.name.charAt(0).toUpperCase();
+      icon.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
       detail.appendChild(icon);
 
       const name = createElement("h3", "codex-detail__name", entry.name);
       detail.appendChild(name);
 
+      const typeLabel =
+        entry.type === "memory"
+          ? "Memory"
+          : entry.type === "relic"
+          ? "Relic"
+          : "Consumable";
+      const metaParts = [typeLabel];
       if (entry.emotion) {
+        metaParts.push(entry.emotion);
+      }
+      if (metaParts.length > 0) {
         detail.appendChild(
-          createElement(
-            "p",
-            "codex-detail__meta",
-            `${entry.type === "memory" ? "Memory" : "Relic"} • ${
-              entry.emotion
-            }`
-          )
+          createElement("p", "codex-detail__meta", metaParts.join(" • "))
         );
       }
 
@@ -3013,11 +3106,13 @@
         "section",
         `codex-section codex-section--${type}`
       );
-      const title = createElement(
-        "h3",
-        "codex-section__title",
-        type === "memory" ? "Memories" : "Relics"
-      );
+      const titleText =
+        type === "memory"
+          ? "Memories"
+          : type === "relic"
+          ? "Relics"
+          : "Consumables";
+      const title = createElement("h3", "codex-section__title", titleText);
       section.appendChild(title);
 
       const iconRow = createElement("div", "codex-section__icons");
@@ -3037,7 +3132,7 @@
           button.dataset.entryKey = entry.key;
           button.dataset.entryType = entry.type;
           button.title = `${entry.name} — ${entry.summary}`;
-          button.textContent = entry.name.charAt(0).toUpperCase();
+          button.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
           button.addEventListener("click", () => updateDetail(entry));
           iconButtons.push(button);
           iconRow.appendChild(button);
@@ -3057,6 +3152,15 @@
     sections.appendChild(
       createSection(relicEntries, "relic", "No relics recorded in this ledger.")
     );
+    if (consumableEntries.length > 0) {
+      sections.appendChild(
+        createSection(
+          consumableEntries,
+          "consumable",
+          "No consumables catalogued."
+        )
+      );
+    }
 
     codex.append(sections, detail);
     target.appendChild(codex);
@@ -3176,7 +3280,7 @@
       const text = value > 0 ? `You gain ${value} gold.` : `You spend ${Math.abs(value)} gold.`;
       ctx.showToast(text);
     }
-    updateResourceDisplays();
+    updateResourceDisplays(ctx);
   }
 
   function addConsumable(key, count = 1, ctx) {
@@ -3184,14 +3288,34 @@
       return;
     }
     state.playerConsumables = state.playerConsumables || {};
-    state.playerConsumables[key] = (state.playerConsumables[key] || 0) + count;
-    if (ctx?.showToast) {
-      const item = CONSUMABLE_MAP.get(key);
-      if (count > 0 && item) {
-        ctx.showToast(`Added ${count} × ${item.name} to your satchel.`);
+    const currentTotal = getTotalConsumables();
+    if (count > 0) {
+      const remainingSlots = MAX_CONSUMABLE_SLOTS - currentTotal;
+      if (remainingSlots <= 0) {
+        ctx?.showToast?.("Your satchel is full.");
+        return;
+      }
+      const amountToAdd = Math.min(count, remainingSlots);
+      state.playerConsumables[key] =
+        (state.playerConsumables[key] || 0) + amountToAdd;
+      if (ctx?.showToast) {
+        const item = CONSUMABLE_MAP.get(key);
+        if (item) {
+          const message =
+            amountToAdd === count
+              ? `Added ${amountToAdd} × ${item.name} to your satchel.`
+              : `Added ${amountToAdd} × ${item.name}. Your satchel cannot hold more.`;
+          ctx.showToast(message);
+        }
+      }
+    } else {
+      state.playerConsumables[key] =
+        (state.playerConsumables[key] || 0) + count;
+      if (state.playerConsumables[key] <= 0) {
+        delete state.playerConsumables[key];
       }
     }
-    updateResourceDisplays();
+    updateResourceDisplays(ctx);
   }
 
   function addRelic(key, ctx) {
@@ -3210,7 +3334,7 @@
     } else if (ctx?.showToast) {
       ctx.showToast("You already carry that relic.");
     }
-    updateResourceDisplays();
+    updateResourceDisplays(ctx);
   }
 
   function addMemoryToState(key, ctx) {
@@ -3285,7 +3409,7 @@
       );
       updateCombatUI(state.activeCombat);
     }
-    updateResourceDisplays();
+    updateResourceDisplays(ctx);
   }
 
   function createMemoryDraftPacks(count = 3, optionsPerPack = 3) {
@@ -3369,25 +3493,6 @@
 
     const description = createElement("p", "memory-card__description", memory.description);
     card.appendChild(description);
-
-    if (Array.isArray(memory.contributions) && memory.contributions.length > 0) {
-      const list = createElement("ul", "memory-card__actions");
-      memory.contributions.forEach((entry) => {
-        const action = ACTION_DEFINITIONS[entry.action];
-        const label = action ? action.name : entry.action;
-        const weightValue = Number(entry.weight) || 0;
-        const formattedWeight = weightValue % 1 === 0
-          ? weightValue.toFixed(0)
-          : weightValue.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-        const item = createElement(
-          "li",
-          "memory-card__action",
-          `${label} (weight ${formattedWeight})`
-        );
-        list.appendChild(item);
-      });
-      card.appendChild(list);
-    }
 
     if (memory.passive) {
       const passiveText = formatPassiveDescription(memory.passive);
@@ -5818,6 +5923,8 @@
       updateResources: updateResourceDisplays,
     };
 
+    state.activeScreenContext = context;
+
     const screenContent = screenDef.render(context);
     contentEl.replaceChildren(screenContent);
     setBackground(screenDef, options);
@@ -5832,7 +5939,7 @@
       state.inRun = true;
     }
 
-    updateResourceDisplays();
+    updateResourceDisplays(context);
   }
 
   function preloadImages(imageList) {

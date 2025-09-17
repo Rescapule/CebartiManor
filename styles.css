@@ -425,6 +425,60 @@ button {
   font-size: 0.9em;
 }
 
+.run-resources__item--consumables {
+  gap: 0.5rem;
+}
+
+.run-resources__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.consumable-slots {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.consumable-slot {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(214, 179, 112, 0.45);
+  background: rgba(214, 179, 112, 0.18);
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.consumable-slot:hover,
+.consumable-slot:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(214, 179, 112, 0.35);
+  border-color: rgba(214, 179, 112, 0.75);
+  outline: none;
+}
+
+.consumable-slot__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.consumable-slot--empty {
+  border-style: dashed;
+  border-color: rgba(214, 179, 112, 0.25);
+  background: transparent;
+  opacity: 0.45;
+  cursor: default;
+  pointer-events: none;
+}
+
 .inventory-button {
   display: inline-flex;
   align-items: center;
@@ -640,6 +694,11 @@ button {
 
 .codex-icon--relic {
   background: rgba(18, 10, 6, 0.7);
+}
+
+.codex-icon--consumable,
+.codex-detail__icon--consumable {
+  background: linear-gradient(135deg, rgba(58, 102, 90, 0.8), rgba(24, 54, 46, 0.85));
 }
 
 .codex-detail__icon--memory {
