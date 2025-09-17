@@ -1441,7 +1441,7 @@
   const MERCHANT_DRAFT_COST_INCREMENT = 5;
 
   const DEFAULT_PLAYER_STATS = {
-    maxEssence: 12,
+    maxEssence: 15,
     baseApRegen: 6,
     baseCritChance: 5,
     apCarryover: 12,
@@ -1660,7 +1660,7 @@
       ],
     },
     archivist: {
-      maxEssence: 22,
+      maxEssence: 66,
       moves: [
         {
           key: "catalogStrike",
@@ -1686,7 +1686,7 @@
       ],
     },
     floodBride: {
-      maxEssence: 24,
+      maxEssence: 72,
       moves: [
         {
           key: "tidalRush",
@@ -2172,20 +2172,79 @@
         const subtitle = createElement(
           "p",
           "screen__subtitle",
-          "Peruse every memory and relic documented within the manor's archives."
+          "Peruse the manor's memories, actions, relics, and denizens."
         );
 
         const content = createElement(
           "div",
           "codex-panel__content codex-panel__content--screen"
         );
-        const viewState = { selectedKey: null, selectedType: null };
+        const viewState = { selectedKey: null, selectedType: null, pageIndex: 0 };
+        const bestiaryPages = [
+          {
+            key: "memoriesActions",
+            title: "Memories & Actions",
+            sections: [
+              {
+                type: "memory",
+                emptyText: "No memories recorded in this ledger.",
+              },
+              {
+                type: "action",
+                emptyText: "No actions documented yet.",
+              },
+            ],
+          },
+          {
+            key: "relicsConsumables",
+            title: "Relics & Consumables",
+            sections: [
+              {
+                type: "relic",
+                emptyText: "No relics recorded in this ledger.",
+              },
+              {
+                type: "consumable",
+                emptyText: "No consumables catalogued.",
+              },
+            ],
+          },
+          {
+            key: "enemiesBosses",
+            title: "Enemies & Bosses",
+            sections: [
+              {
+                type: "enemy",
+                emptyText: "No enemies have been catalogued.",
+              },
+              {
+                type: "boss",
+                emptyText: "No bosses have been recorded.",
+              },
+            ],
+          },
+          {
+            key: "playerGhosts",
+            title: "Player Ghosts",
+            sections: [
+              {
+                type: "playerGhost",
+                emptyText: "No player apparitions have manifested.",
+              },
+            ],
+          },
+        ];
         renderCodexContent(content, {
           layout: "screen",
           viewState,
           memoryKeys: MEMORY_DEFINITIONS.map((memory) => memory.key),
+          actionKeys: Object.keys(ACTION_DEFINITIONS || {}),
           relicKeys: RELIC_DEFINITIONS.map((relic) => relic.key),
           consumableKeys: CONSUMABLE_DEFINITIONS.map((item) => item.key),
+          enemyKeys: enemySprites.map((sprite) => sprite.key),
+          bossKeys: bossSprites.map((sprite) => sprite.key),
+          playerGhostKeys: [playerCharacter.key],
+          pages: bestiaryPages,
           emptyMessage: "Entries will appear here as development continues.",
         });
 
@@ -2738,7 +2797,11 @@
     items.forEach((item) => {
       const button = createElement("button", "consumable-slot");
       button.type = "button";
-      button.title = item.name;
+      const tooltipParts = [item.name];
+      if (item.description) {
+        tooltipParts.push(item.description);
+      }
+      button.title = tooltipParts.join(" — ");
       button.setAttribute("aria-label", `Use ${item.name}`);
 
       const iconText = item.icon || item.name.charAt(0).toUpperCase();
@@ -2978,6 +3041,263 @@
     return entries.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  function buildActionEntriesFromKeys(keys = []) {
+    const seen = new Set();
+    const entries = [];
+    const sourceKeys =
+      Array.isArray(keys) && keys.length > 0
+        ? keys
+        : Object.keys(ACTION_DEFINITIONS || {});
+    sourceKeys.forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      const action = ACTION_DEFINITIONS[key];
+      if (!action) {
+        return;
+      }
+      seen.add(key);
+      const paragraphs = [];
+      if (action.description) {
+        paragraphs.push(action.description);
+      }
+      const costLine = formatActionCostLine(action.cost);
+      if (costLine) {
+        paragraphs.push(costLine);
+      }
+      if (action.chain) {
+        const sequence = ACTION_SEQUENCES[action.chain.key] || [];
+        if (sequence.length > 0) {
+          const chainText = sequence
+            .map((actionKey) => ACTION_DEFINITIONS[actionKey]?.name || actionKey)
+            .join(" → ");
+          if (chainText) {
+            paragraphs.push(`Chain: ${chainText}`);
+          }
+        }
+      }
+      entries.push({
+        key: action.key,
+        type: "action",
+        name: action.name,
+        emotion: action.emotion || "",
+        emotionSlug: slugifyEmotion(action.emotion),
+        summary: action.description || "",
+        detailParagraphs: paragraphs.filter(Boolean),
+        iconSymbol: action.name.charAt(0).toUpperCase(),
+        stats: buildActionStats(action),
+      });
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function buildEnemyEntriesFromKeys(keys = [], type = "enemy") {
+    const seen = new Set();
+    const entries = [];
+    const spriteSources =
+      type === "boss"
+        ? bossSprites
+        : [...enemySprites, ...bossSprites];
+    const spriteMap = new Map(spriteSources.map((sprite) => [sprite.key, sprite]));
+    const defaultKeys =
+      type === "boss"
+        ? bossSprites.map((sprite) => sprite.key)
+        : enemySprites.map((sprite) => sprite.key);
+    const sourceKeys =
+      Array.isArray(keys) && keys.length > 0 ? keys : defaultKeys;
+    sourceKeys.forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const definition = ENEMY_DEFINITIONS[key];
+      const sprite = spriteMap.get(key);
+      if (!definition && !sprite) {
+        return;
+      }
+      const name =
+        sprite?.name ||
+        definition?.name ||
+        key
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^-+|-+$/g, "")
+          .replace(/^./, (char) => char.toUpperCase());
+      const detailParagraphs = [];
+      if (sprite?.alt) {
+        detailParagraphs.push(sprite.alt);
+      }
+      const stats = [];
+      if (Number.isFinite(Number(definition?.maxEssence))) {
+        stats.push({ label: "Max Essence", value: Number(definition.maxEssence) });
+      }
+      const moves = Array.isArray(definition?.moves)
+        ? definition.moves.map((move) => ({
+            key: move.key,
+            name: move.name || move.key,
+            description: formatMoveDescription(move),
+          }))
+        : [];
+      entries.push({
+        key,
+        type,
+        name,
+        summary: sprite?.alt || "",
+        detailParagraphs: detailParagraphs.filter(Boolean),
+        iconSymbol: name.charAt(0).toUpperCase(),
+        moves: moves.filter((move) => move.name),
+        stats,
+      });
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function buildBossEntriesFromKeys(keys = []) {
+    return buildEnemyEntriesFromKeys(keys, "boss");
+  }
+
+  function buildPlayerGhostEntriesFromKeys(keys = []) {
+    const entries = [];
+    const spriteMap = new Map([[playerCharacter.key, playerCharacter]]);
+    const sourceKeys =
+      Array.isArray(keys) && keys.length > 0 ? keys : [playerCharacter.key];
+    sourceKeys.forEach((key) => {
+      if (entries.some((entry) => entry.key === key)) {
+        return;
+      }
+      const sprite = spriteMap.get(key);
+      if (!sprite) {
+        return;
+      }
+      entries.push({
+        key,
+        type: "playerGhost",
+        name: sprite.name || "Player Ghost",
+        summary: sprite.alt || "",
+        detailParagraphs: [sprite.alt].filter(Boolean),
+        iconSymbol: sprite.name ? sprite.name.charAt(0).toUpperCase() : "☽",
+      });
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function formatActionCostLine(cost) {
+    if (!cost || typeof cost !== "object") {
+      return "";
+    }
+    const parts = [];
+    const ap = Number(cost.ap);
+    const essence = Number(cost.essence);
+    if (Number.isFinite(ap) && ap > 0) {
+      parts.push(`${ap} AP`);
+    }
+    if (Number.isFinite(essence) && essence > 0) {
+      parts.push(`${essence} Essence`);
+    }
+    if (parts.length === 0) {
+      return "Cost: Free.";
+    }
+    return `Cost: ${parts.join(" • ")}.`;
+  }
+
+  function buildActionStats(action) {
+    if (!action) {
+      return [];
+    }
+    const stats = [];
+    if (action.type) {
+      stats.push({ label: "Type", value: formatTitleCase(action.type) });
+    }
+    const damage = Number(action.baseDamage);
+    if (Number.isFinite(damage) && damage !== 0) {
+      stats.push({ label: "Base Damage", value: damage });
+    }
+    const block = Number(action.block);
+    if (Number.isFinite(block) && block !== 0) {
+      stats.push({ label: "Block", value: block });
+    }
+    const heal = Number(action.heal);
+    if (Number.isFinite(heal) && heal !== 0) {
+      stats.push({ label: "Heal", value: heal });
+    }
+    if (action.apply) {
+      const statusText = formatStatusEffectsText(action.apply);
+      if (statusText) {
+        stats.push({ label: "Applies", value: statusText });
+      }
+    }
+    return stats;
+  }
+
+  function formatTitleCase(value) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      return "";
+    }
+    return value
+      .split(/[\s_-]+/)
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(" ");
+  }
+
+  function formatStatusEffectsText(effects) {
+    if (!effects || typeof effects !== "object") {
+      return "";
+    }
+    const parts = [];
+    Object.entries(effects).forEach(([key, amount]) => {
+      if (amount === undefined || amount === null) {
+        return;
+      }
+      let label = "";
+      if (typeof formatStatusLabel === "function") {
+        label = formatStatusLabel(key, { stacks: amount });
+      }
+      if (!label) {
+        const formattedKey = key
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (char) => char.toUpperCase());
+        const numericAmount = Number(amount);
+        label = Number.isFinite(numericAmount)
+          ? `${formattedKey} ${numericAmount}`
+          : formattedKey;
+      }
+      parts.push(label);
+    });
+    return parts.join(", ");
+  }
+
+  function formatMoveDescription(move) {
+    if (!move) {
+      return "";
+    }
+    const parts = [];
+    if (move.description) {
+      parts.push(move.description);
+    }
+    const effectParts = [];
+    const damage = Number(move.damage);
+    if (Number.isFinite(damage) && damage !== 0) {
+      effectParts.push(`Damage ${damage}`);
+    }
+    const block = Number(move.block);
+    if (Number.isFinite(block) && block !== 0) {
+      effectParts.push(`Block ${block}`);
+    }
+    const heal = Number(move.heal);
+    if (Number.isFinite(heal) && heal !== 0) {
+      effectParts.push(`Heal ${heal}`);
+    }
+    if (move.apply) {
+      const statusText = formatStatusEffectsText(move.apply);
+      if (statusText) {
+        effectParts.push(`Applies ${statusText}`);
+      }
+    }
+    if (effectParts.length > 0) {
+      parts.push(effectParts.join(" • "));
+    }
+    return parts.join(" ").trim();
+  }
+
   function createConsumablesSection(ctx) {
     const section = createElement("section", "codex-consumables");
     const title = createElement("h3", "codex-consumables__title", "Consumables");
@@ -3032,30 +3352,114 @@
   function renderCodexContent(target, options) {
     const {
       memoryKeys = [],
+      actionKeys = [],
       relicKeys = [],
       consumableKeys = [],
+      enemyKeys = [],
+      bossKeys = [],
+      playerGhostKeys = [],
       layout = "overlay",
       viewState = {},
       emptyMessage = "No entries recorded yet.",
+      pages: customPages = null,
     } = options || {};
 
     const memoryEntries = buildMemoryEntriesFromKeys(memoryKeys);
+    const actionEntries = buildActionEntriesFromKeys(actionKeys);
     const relicEntries = buildRelicEntriesFromKeys(relicKeys);
     const consumableEntries = buildConsumableEntriesFromKeys(consumableKeys);
-    const allEntries = [...memoryEntries, ...relicEntries, ...consumableEntries];
+    const enemyEntries = buildEnemyEntriesFromKeys(enemyKeys, "enemy");
+    const bossEntries = buildBossEntriesFromKeys(bossKeys);
+    const playerGhostEntries = buildPlayerGhostEntriesFromKeys(playerGhostKeys);
+
+    const entriesByType = {
+      memory: memoryEntries,
+      action: actionEntries,
+      relic: relicEntries,
+      consumable: consumableEntries,
+      enemy: enemyEntries,
+      boss: bossEntries,
+      playerGhost: playerGhostEntries,
+    };
+
+    const defaultSections = [
+      { type: "memory", emptyText: "No memories recorded in this ledger." },
+      { type: "relic", emptyText: "No relics recorded in this ledger." },
+    ];
+    if (consumableEntries.length > 0) {
+      defaultSections.push({
+        type: "consumable",
+        emptyText: "No consumables catalogued.",
+      });
+    }
+
+    const pages =
+      Array.isArray(customPages) && customPages.length > 0
+        ? customPages
+        : [
+            {
+              key: "default",
+              title: "",
+              sections: defaultSections,
+            },
+          ];
 
     target.replaceChildren();
 
+    const hasMultiplePages = pages.length > 1;
+    const shellClassNames = ["codex-shell", `codex-shell--${layout}`];
+    if (hasMultiplePages) {
+      shellClassNames.push("codex-shell--paged");
+    }
+    const shell = createElement("div", shellClassNames.join(" "));
     const codex = createElement("div", `codex codex--${layout}`);
+    const pageTitle = hasMultiplePages
+      ? createElement("h3", "codex__page-title")
+      : null;
+    if (pageTitle) {
+      codex.appendChild(pageTitle);
+    }
     const sections = createElement("div", "codex__sections");
-
     const detail = createElement("div", "codex-detail");
+    codex.append(sections, detail);
+    shell.appendChild(codex);
+
+    let navPrev = null;
+    let navNext = null;
+    let pageIndicator = null;
+
+    if (hasMultiplePages) {
+      navPrev = createElement("button", "codex-nav codex-nav--prev", "←");
+      navPrev.type = "button";
+      navPrev.setAttribute("aria-label", "Previous page");
+      navNext = createElement("button", "codex-nav codex-nav--next", "→");
+      navNext.type = "button";
+      navNext.setAttribute("aria-label", "Next page");
+      pageIndicator = createElement("div", "codex__page-indicator");
+      shell.append(navPrev, pageIndicator, navNext);
+    }
+
+    target.appendChild(shell);
 
     const iconButtons = [];
 
-    function updateDetail(entry) {
+    function getEntriesForSection(section) {
+      const entries = entriesByType[section.type] || [];
+      if (typeof section.filter === "function") {
+        return entries.filter((entry) => section.filter(entry) !== false);
+      }
+      return entries.slice();
+    }
+
+    function updateDetail(entry, pageIndex) {
       detail.replaceChildren();
       if (!entry) {
+        iconButtons.forEach((button) => button.classList.remove("is-selected"));
+        viewState.selectedKey = null;
+        viewState.selectedType = null;
+        if (typeof pageIndex === "number") {
+          viewState.pageIndex = pageIndex;
+        }
         detail.appendChild(
           createElement("p", "codex-detail__empty", emptyMessage)
         );
@@ -3064,6 +3468,9 @@
 
       viewState.selectedKey = entry.key;
       viewState.selectedType = entry.type;
+      if (typeof pageIndex === "number") {
+        viewState.pageIndex = pageIndex;
+      }
 
       iconButtons.forEach((button) => {
         if (
@@ -3085,16 +3492,20 @@
       icon.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
       detail.appendChild(icon);
 
-      const name = createElement("h3", "codex-detail__name", entry.name);
-      detail.appendChild(name);
+      detail.appendChild(
+        createElement("h3", "codex-detail__name", entry.name)
+      );
 
-      const typeLabel =
-        entry.type === "memory"
-          ? "Memory"
-          : entry.type === "relic"
-          ? "Relic"
-          : "Consumable";
-      const metaParts = [typeLabel];
+      const typeLabels = {
+        memory: "Memory",
+        action: "Action",
+        relic: "Relic",
+        consumable: "Consumable",
+        enemy: "Enemy",
+        boss: "Boss",
+        playerGhost: "Player Ghost",
+      };
+      const metaParts = [typeLabels[entry.type] || "Entry"];
       if (entry.emotion) {
         metaParts.push(entry.emotion);
       }
@@ -3102,6 +3513,29 @@
         detail.appendChild(
           createElement("p", "codex-detail__meta", metaParts.join(" • "))
         );
+      }
+
+      if (Array.isArray(entry.stats) && entry.stats.length > 0) {
+        const statsList = createElement("ul", "codex-detail__stats");
+        entry.stats.forEach((stat) => {
+          if (!stat || !stat.label || stat.value === undefined || stat.value === null) {
+            return;
+          }
+          const valueText =
+            typeof stat.value === "number" && Number.isFinite(stat.value)
+              ? String(stat.value)
+              : String(stat.value);
+          statsList.appendChild(
+            createElement(
+              "li",
+              "codex-detail__stat",
+              `${stat.label}: ${valueText}`
+            )
+          );
+        });
+        if (statsList.childElementCount > 0) {
+          detail.appendChild(statsList);
+        }
       }
 
       entry.detailParagraphs
@@ -3135,84 +3569,186 @@
         });
         detail.appendChild(list);
       }
+
+      if (entry.moves && entry.moves.length > 0) {
+        detail.appendChild(
+          createElement("h4", "codex-detail__subtitle", "Moves")
+        );
+        const list = createElement(
+          "ul",
+          "codex-detail__list codex-detail__list--moves"
+        );
+        entry.moves.forEach((move) => {
+          if (!move || !move.name) {
+            return;
+          }
+          const text = move.description
+            ? `${move.name} — ${move.description}`
+            : move.name;
+          list.appendChild(
+            createElement("li", "codex-detail__list-item", text)
+          );
+        });
+        detail.appendChild(list);
+      }
     }
 
-    function createSection(entries, type, emptyText) {
-      const section = createElement(
+    const sectionLabels = {
+      memory: "Memories",
+      action: "Actions",
+      relic: "Relics",
+      consumable: "Consumables",
+      enemy: "Enemies",
+      boss: "Bosses",
+      playerGhost: "Player Ghosts",
+    };
+
+    function createSection(section, entries, pageIndex) {
+      const sectionElement = createElement(
         "section",
-        `codex-section codex-section--${type}`
+        `codex-section codex-section--${section.type}`
       );
       const titleText =
-        type === "memory"
-          ? "Memories"
-          : type === "relic"
-          ? "Relics"
-          : "Consumables";
-      const title = createElement("h3", "codex-section__title", titleText);
-      section.appendChild(title);
+        section.title ||
+        sectionLabels[section.type] ||
+        formatTitleCase(section.type);
+      sectionElement.appendChild(
+        createElement("h3", "codex-section__title", titleText)
+      );
 
       const iconRow = createElement("div", "codex-section__icons");
       if (entries.length === 0) {
         iconRow.appendChild(
-          createElement("p", "codex-section__empty", emptyText)
+          createElement(
+            "p",
+            "codex-section__empty",
+            section.emptyText || "No entries recorded in this ledger."
+          )
         );
       } else {
         entries.forEach((entry) => {
           const button = createElement(
             "button",
-            `codex-icon codex-icon--${type} ${
+            `codex-icon codex-icon--${entry.type} ${
               entry.emotionSlug ? `codex-icon--${entry.emotionSlug}` : ""
             }`
           );
           button.type = "button";
           button.dataset.entryKey = entry.key;
           button.dataset.entryType = entry.type;
-          button.title = `${entry.name} — ${entry.summary}`;
+          const tooltipParts = [entry.name];
+          if (entry.summary) {
+            tooltipParts.push(entry.summary);
+          }
+          button.title = tooltipParts.join(" — ");
           button.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
-          button.addEventListener("click", () => updateDetail(entry));
+          button.addEventListener("click", () => updateDetail(entry, pageIndex));
           iconButtons.push(button);
           iconRow.appendChild(button);
         });
       }
-      section.appendChild(iconRow);
-      return section;
+      sectionElement.appendChild(iconRow);
+      return sectionElement;
     }
 
-    sections.appendChild(
-      createSection(
-        memoryEntries,
-        "memory",
-        "No memories recorded in this ledger."
-      )
+    function updateNavState(currentIndex) {
+      if (!hasMultiplePages) {
+        return;
+      }
+      if (navPrev) {
+        navPrev.disabled = currentIndex <= 0;
+      }
+      if (navNext) {
+        navNext.disabled = currentIndex >= pages.length - 1;
+      }
+      if (pageIndicator) {
+        pageIndicator.textContent = `Page ${currentIndex + 1} of ${pages.length}`;
+      }
+    }
+
+    let currentPageIndex = Math.min(
+      Math.max(Number(viewState.pageIndex) || 0, 0),
+      pages.length - 1
     );
-    sections.appendChild(
-      createSection(relicEntries, "relic", "No relics recorded in this ledger.")
-    );
-    if (consumableEntries.length > 0) {
-      sections.appendChild(
-        createSection(
-          consumableEntries,
-          "consumable",
-          "No consumables catalogued."
+
+    const selectionKey = viewState.selectedKey;
+    const selectionType = viewState.selectedType;
+    if (selectionKey && selectionType) {
+      const foundIndex = pages.findIndex((page) =>
+        page.sections.some((section) =>
+          (entriesByType[section.type] || []).some(
+            (entry) =>
+              entry.key === selectionKey && entry.type === selectionType
+          )
         )
       );
+      if (foundIndex >= 0) {
+        currentPageIndex = foundIndex;
+      }
     }
 
-    codex.append(sections, detail);
-    target.appendChild(codex);
-
-    let selectedEntry = null;
-    if (viewState.selectedKey && viewState.selectedType) {
-      selectedEntry = allEntries.find(
-        (entry) =>
-          entry.key === viewState.selectedKey &&
-          entry.type === viewState.selectedType
+    function renderPage(pageIndex) {
+      const clampedIndex = Math.min(
+        Math.max(Number(pageIndex) || 0, 0),
+        pages.length - 1
       );
+      const page = pages[clampedIndex];
+      currentPageIndex = clampedIndex;
+      if (!page) {
+        detail.replaceChildren();
+        detail.appendChild(
+          createElement("p", "codex-detail__empty", emptyMessage)
+        );
+        updateNavState(clampedIndex);
+        return;
+      }
+
+      sections.replaceChildren();
+      iconButtons.length = 0;
+
+      if (pageTitle) {
+        pageTitle.textContent = page.title || "";
+        pageTitle.classList.toggle("is-hidden", !page.title);
+      }
+
+      const availableEntries = [];
+      page.sections.forEach((section) => {
+        const entries = getEntriesForSection(section);
+        availableEntries.push(...entries);
+        sections.appendChild(createSection(section, entries, clampedIndex));
+      });
+
+      let selectedEntry = null;
+      if (availableEntries.length > 0) {
+        if (viewState.selectedKey && viewState.selectedType) {
+          selectedEntry =
+            availableEntries.find(
+              (entry) =>
+                entry.key === viewState.selectedKey &&
+                entry.type === viewState.selectedType
+            ) || null;
+        }
+        if (!selectedEntry) {
+          selectedEntry = availableEntries[0];
+        }
+      }
+
+      updateDetail(selectedEntry, clampedIndex);
+      updateNavState(clampedIndex);
     }
-    if (!selectedEntry) {
-      selectedEntry = allEntries[0] || null;
+
+    if (navPrev) {
+      navPrev.addEventListener("click", () => {
+        renderPage(currentPageIndex - 1);
+      });
     }
-    updateDetail(selectedEntry);
+    if (navNext) {
+      navNext.addEventListener("click", () => {
+        renderPage(currentPageIndex + 1);
+      });
+    }
+
+    renderPage(currentPageIndex);
   }
 
   function refreshCodexOverlay(ctxOverride) {
