@@ -92,6 +92,24 @@
     },
   ];
 
+  const DOOR_SPRITES = {
+    base: "objspr_doors_door.png",
+    lock: "objspr_doors_lock.png",
+    icons: {
+      combat: "objspr_doors_combatroomsign.png",
+      elite: "objspr_doors_elitecombatroomsign.png",
+      boss: "objspr_doors_bosscombatroomsign.png",
+      merchant: "objspr_doors_merchantroomsign.png",
+      treasure: "objspr_doors_treasureroomsign.png",
+      recovery: "objspr_doors_restoreroomsign.png",
+      event: "objspr_doors_eventroomsign.png",
+    },
+  };
+
+  const MANOR_KEY_CONSUMABLE_KEY = "consumableManorKey";
+  const ENHANCED_DOOR_CHANCE = 0.25;
+  const ENHANCED_GOLD_MULTIPLIER = 1.5;
+
   const merchantSprites = [
     {
       key: "bellringer",
@@ -1430,6 +1448,13 @@
       icon: "✶",
       effect: { type: "increaseMaxEssence", amount: 5 },
     },
+    {
+      key: MANOR_KEY_CONSUMABLE_KEY,
+      name: "Manor Key",
+      description: "Unlocks a locked enhanced door within the corridor.",
+      icon: "🗝",
+      effect: { type: "unlockDoor" },
+    },
   ];
 
   const CONSUMABLE_MAP = new Map(
@@ -1858,6 +1883,7 @@
     activeScreenContext: null,
     merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
     roomRewardsClaimed: {},
+    currentRoomIsEnhanced: false,
   };
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
@@ -1873,6 +1899,7 @@
       colorClass: "door-button--crimson",
       ariaDescription: "Engage in a standard combat encounter.",
       detail: "Battle restless shades.",
+      icon: DOOR_SPRITES.icons.combat,
     },
     {
       key: "elite",
@@ -1880,6 +1907,7 @@
       colorClass: "door-button--violet",
       ariaDescription: "Challenge a formidable elite opponent.",
       detail: "Face a formidable elite.",
+      icon: DOOR_SPRITES.icons.elite,
     },
     {
       key: "boss",
@@ -1887,6 +1915,7 @@
       colorClass: "door-button--umbra",
       ariaDescription: "Confront a boss-tier adversary.",
       detail: "Challenge a boss-tier foe.",
+      icon: DOOR_SPRITES.icons.boss,
     },
     {
       key: "recovery",
@@ -1895,6 +1924,7 @@
       ariaDescription:
         "Replenish and permanently fortify your essence in a restorative chamber.",
       detail: "Claim lasting essence and mend completely.",
+      icon: DOOR_SPRITES.icons.recovery,
     },
     {
       key: "treasure",
@@ -1902,6 +1932,7 @@
       colorClass: "door-button--amber",
       ariaDescription: "Search for rare rewards hidden within the manor.",
       detail: "Seek hidden rewards.",
+      icon: DOOR_SPRITES.icons.treasure,
     },
     {
       key: "merchant",
@@ -1909,6 +1940,7 @@
       colorClass: "door-button--azure",
       ariaDescription: "Trade with a spectral merchant.",
       detail: "Barter with a spectral vendor.",
+      icon: DOOR_SPRITES.icons.merchant,
     },
     {
       key: "event",
@@ -1916,6 +1948,7 @@
       colorClass: "door-button--aether",
       ariaDescription: "Trigger an unpredictable manor event.",
       detail: "Stumble into a strange event.",
+      icon: DOOR_SPRITES.icons.event,
     },
   ];
 
@@ -1946,6 +1979,7 @@
     state.activeScreenContext = null;
     state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
     state.roomRewardsClaimed = {};
+    state.currentRoomIsEnhanced = false;
   }
 
   function clearRunState() {
@@ -1974,6 +2008,7 @@
     state.activeScreenContext = null;
     state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
     state.roomRewardsClaimed = {};
+    state.currentRoomIsEnhanced = false;
   }
 
   function shuffle(array) {
@@ -2016,6 +2051,7 @@
 
     const encounterType = options.encounterType || null;
     ctx.state.currentEncounterType = encounterType;
+    ctx.state.currentRoomIsEnhanced = !!options.enhanced;
     const encounter = getEncounterForType(encounterType);
     ctx.state.currentEncounter = encounter;
 
@@ -2040,6 +2076,7 @@
     ctx.state.corridorRefreshes = 0;
 
     ctx.state.currentEncounterType = "boss";
+    ctx.state.currentRoomIsEnhanced = false;
     const encounter = getEncounterForType("boss");
     ctx.state.currentEncounter = encounter;
 
@@ -2390,6 +2427,8 @@
 
         const subtitle = createElement("p", "screen__subtitle", descriptionText);
 
+        ctx.state.currentRoomIsEnhanced = false;
+
         const doorMap = createElement("div", "door-map");
         if (roomsRemaining === 0) {
           const { element: foyerDoor, button: foyerButton } = createDoorChoice(
@@ -2411,29 +2450,118 @@
           const doorCount = Math.min(3, roomsRemaining);
           const roomsForDoors = sampleWithoutReplacement(availableRooms, doorCount);
           const categories = getDoorCategoryOptions(doorCount);
-
-          roomsForDoors.forEach((roomKey, index) => {
+          const doors = roomsForDoors.map((roomKey, index) => {
             const category = categories[index] || {};
+            const enhanced =
+              doorCount <= 1 ? false : Math.random() < ENHANCED_DOOR_CHANCE;
+            return { roomKey, category, enhanced };
+          });
+
+          if (doors.length > 0 && doors.every((door) => door.enhanced)) {
+            const randomIndex = Math.floor(Math.random() * doors.length);
+            doors[randomIndex].enhanced = false;
+          }
+
+          doors.forEach(({ roomKey, category, enhanced }, index) => {
             const extraClasses = [];
             if (typeof category.colorClass === "string" && category.colorClass) {
               extraClasses.push(category.colorClass);
             }
-            const { element: doorChoice, button: doorButton } = createDoorChoice(
-              category.label || `Door ${index + 1}`,
-              extraClasses,
-              {
-                ariaDescription:
-                  category.ariaDescription || "Leads to an unknown chamber.",
-                detail: category.detail,
+            if (enhanced) {
+              extraClasses.push("door-button--enhanced");
+            }
+
+            const detailParts = [];
+            if (category.detail) {
+              detailParts.push(category.detail);
+            }
+            if (enhanced) {
+              detailParts.push("Locked — requires a Manor Key.");
+            }
+
+            const doorLabel = category.label || `Door ${index + 1}`;
+            const detailText = detailParts.join(" ").trim();
+            const ariaDescriptionParts = [
+              category.ariaDescription || "Leads to an unknown chamber.",
+            ];
+            if (enhanced) {
+              ariaDescriptionParts.push("Locked — requires a Manor Key.");
+            }
+
+            const { element: doorChoice, button: doorButton, iconElement, labelElement, lockElement } =
+              createDoorChoice(doorLabel, extraClasses, {
+                ariaDescription: ariaDescriptionParts.join(" "),
+                detail: detailText.length > 0 ? detailText : undefined,
+                displayLabel: doorLabel,
                 dataset:
                   typeof category.key === "string"
                     ? { category: category.key }
                     : undefined,
-              }
-            );
+                iconSrc: category.icon,
+              });
+
+            if (iconElement) {
+              iconElement.title = category.label || doorLabel;
+            }
+
+            if (labelElement && enhanced) {
+              labelElement.classList.add("door-option__label--locked");
+              const lockBadge = createElement(
+                "span",
+                "door-option__badge",
+                "Locked"
+              );
+              labelElement.appendChild(lockBadge);
+            }
+
+            if (lockElement) {
+              lockElement.loading = "lazy";
+            }
+
+            let isLocked = enhanced;
+            if (isLocked) {
+              doorButton.classList.add("door-button--locked");
+            }
+            doorButton.dataset.locked = isLocked ? "true" : "false";
+            doorButton.dataset.enhanced = enhanced ? "true" : "false";
+            if (category.key) {
+              doorButton.dataset.roomType = category.key;
+            }
+
             doorButton.addEventListener("click", async () => {
+              if (isLocked) {
+                const hasKey =
+                  getConsumableCount(MANOR_KEY_CONSUMABLE_KEY) > 0;
+                if (!hasKey) {
+                  ctx.showToast(
+                    "The lock refuses to budge. You'll need a Manor Key."
+                  );
+                  doorButton.classList.add("door-button--shake");
+                  window.setTimeout(() => {
+                    doorButton.classList.remove("door-button--shake");
+                  }, 360);
+                  return;
+                }
+                const spent = spendConsumableCharge(
+                  MANOR_KEY_CONSUMABLE_KEY,
+                  ctx
+                );
+                if (!spent) {
+                  ctx.showToast(
+                    "The key slips from your grasp before the lock yields."
+                  );
+                  return;
+                }
+                ctx.showToast("The Manor Key clicks open the lock.");
+                isLocked = false;
+                doorButton.dataset.locked = "false";
+                doorButton.classList.remove("door-button--locked");
+              }
               doorButton.disabled = true;
-              await goToRoom(ctx, roomKey, { encounterType: category.key });
+              await goToRoom(ctx, roomKey, {
+                encounterType: category.key,
+                enhanced,
+              });
             });
             doorMap.appendChild(doorChoice);
           });
@@ -2716,17 +2844,54 @@
       });
     }
 
+    const frame = createElement("span", "door-button__frame");
+    button.appendChild(frame);
+
+    const sprite = createElement("span", "door-button__sprite");
+    sprite.setAttribute("aria-hidden", "true");
+    sprite.style.backgroundImage = `url(${DOOR_SPRITES.base})`;
+    frame.appendChild(sprite);
+
+    const shine = createElement("span", "door-button__shine");
+    shine.setAttribute("aria-hidden", "true");
+    frame.appendChild(shine);
+
+    let iconElement = null;
+    if (options.iconSrc) {
+      iconElement = document.createElement("img");
+      iconElement.className = "door-button__icon";
+      iconElement.src = options.iconSrc;
+      iconElement.alt = "";
+      iconElement.loading = "lazy";
+      iconElement.decoding = "async";
+      iconElement.setAttribute("aria-hidden", "true");
+      frame.appendChild(iconElement);
+    }
+
+    const lockElement = document.createElement("img");
+    lockElement.className = "door-button__lock";
+    lockElement.src = DOOR_SPRITES.lock;
+    lockElement.alt = "";
+    lockElement.loading = "lazy";
+    lockElement.decoding = "async";
+    lockElement.setAttribute("aria-hidden", "true");
+    frame.appendChild(lockElement);
+
     const hiddenLabel = createElement(
       "span",
       "sr-only",
       `${label}. ${ariaDescription}`
     );
     button.appendChild(hiddenLabel);
-    return button;
+    return { button, iconElement, lockElement, frame, sprite };
   }
 
   function createDoorChoice(label, extraClasses = [], options = {}) {
-    const button = createDoorButton(label, extraClasses, options);
+    const { button, iconElement, lockElement } = createDoorButton(
+      label,
+      extraClasses,
+      options
+    );
     const wrapper = createElement("div", "door-option");
     wrapper.appendChild(button);
 
@@ -2742,7 +2907,7 @@
       wrapper.appendChild(detailElement);
     }
 
-    return { element: wrapper, button, labelElement };
+    return { element: wrapper, button, labelElement, iconElement, lockElement };
   }
 
   function resetResourceDisplayRegistry() {
@@ -2772,6 +2937,25 @@
       (sum, count) => sum + Number(count || 0),
       0
     );
+  }
+
+  function getConsumableCount(key) {
+    if (!key) {
+      return 0;
+    }
+    return Number(state.playerConsumables?.[key] || 0);
+  }
+
+  function spendConsumableCharge(key, ctx) {
+    if (!key || !state.playerConsumables || !state.playerConsumables[key]) {
+      return false;
+    }
+    state.playerConsumables[key] -= 1;
+    if (state.playerConsumables[key] <= 0) {
+      delete state.playerConsumables[key];
+    }
+    updateResourceDisplays(ctx);
+    return true;
   }
 
   function renderConsumableDisplay(container, ctx) {
@@ -3146,6 +3330,8 @@
         iconSymbol: name.charAt(0).toUpperCase(),
         moves: moves.filter((move) => move.name),
         stats,
+        spriteSrc: sprite?.src || null,
+        spriteAlt: sprite?.alt || name,
       });
     });
     return entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -3175,6 +3361,8 @@
         summary: sprite.alt || "",
         detailParagraphs: [sprite.alt].filter(Boolean),
         iconSymbol: sprite.name ? sprite.name.charAt(0).toUpperCase() : "☽",
+        spriteSrc: sprite.src || null,
+        spriteAlt: sprite.alt || sprite.name || "Player Ghost",
       });
     });
     return entries.sort((a, b) => a.name.localeCompare(b.name));
@@ -3483,13 +3671,28 @@
         }
       });
 
-      const icon = createElement(
-        "div",
-        `codex-detail__icon codex-detail__icon--${entry.type} ${
-          entry.emotionSlug ? `codex-detail__icon--${entry.emotionSlug}` : ""
-        }`
-      );
-      icon.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
+      const iconClassNames = [
+        "codex-detail__icon",
+        `codex-detail__icon--${entry.type}`,
+      ];
+      if (entry.emotionSlug) {
+        iconClassNames.push(`codex-detail__icon--${entry.emotionSlug}`);
+      }
+      if (entry.spriteSrc) {
+        iconClassNames.push("codex-detail__icon--has-image");
+      }
+      const icon = createElement("div", iconClassNames.join(" "));
+      if (entry.spriteSrc) {
+        const image = document.createElement("img");
+        image.className = "codex-detail__image";
+        image.src = entry.spriteSrc;
+        image.alt = entry.spriteAlt || entry.name;
+        image.loading = "lazy";
+        image.decoding = "async";
+        icon.appendChild(image);
+      } else {
+        icon.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
+      }
       detail.appendChild(icon);
 
       detail.appendChild(
@@ -3640,8 +3843,24 @@
           if (entry.summary) {
             tooltipParts.push(entry.summary);
           }
-          button.title = tooltipParts.join(" — ");
-          button.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
+          const tooltipText = tooltipParts.join(" — ");
+          button.title = tooltipText;
+          button.setAttribute("aria-label", entry.name);
+          if (entry.spriteSrc) {
+            button.classList.add("codex-icon--has-image");
+            const image = document.createElement("img");
+            image.className = "codex-icon__image";
+            image.src = entry.spriteSrc;
+            image.alt = "";
+            image.loading = "lazy";
+            image.decoding = "async";
+            image.setAttribute("aria-hidden", "true");
+            button.appendChild(image);
+          } else {
+            button.textContent = entry.iconSymbol || entry.name.charAt(0).toUpperCase();
+          }
+          const srLabel = createElement("span", "sr-only", entry.name);
+          button.appendChild(srLabel);
           button.addEventListener("click", () => updateDetail(entry, pageIndex));
           iconButtons.push(button);
           iconRow.appendChild(button);
@@ -3982,6 +4201,12 @@
           message = `Your essence lingers, increasing permanently by ${amount}.`;
         }
         break;
+      }
+      case "unlockDoor": {
+        ctx?.showToast?.(
+          "Keys are used automatically to open locked enhanced doors."
+        );
+        return;
       }
       default: {
         message = "The item fizzles without effect.";
@@ -4779,10 +5004,25 @@
       `combatant-card combatant-card--${role}`
     );
     const avatar = createElement("div", "combatant-card__avatar");
-    avatar.setAttribute("role", "img");
     avatar.title = combatant.name;
     avatar.dataset.role = role;
     container.appendChild(avatar);
+
+    const spriteSource =
+      role === "enemy"
+        ? encounter?.sprite
+        : role === "player"
+        ? playerCharacter
+        : null;
+    if (spriteSource?.src) {
+      const image = document.createElement("img");
+      image.className = "combatant-card__sprite";
+      image.src = spriteSource.src;
+      image.alt = spriteSource.alt || combatant.name;
+      image.loading = role === "player" ? "eager" : "lazy";
+      image.decoding = "async";
+      avatar.appendChild(image);
+    }
 
     const name = createElement("div", "combatant-card__name", combatant.name);
     container.appendChild(name);
@@ -5475,6 +5715,150 @@
     return total;
   }
 
+  function applyEnhancedRewardAdjustments(ctx, plan) {
+    if (!ctx?.state?.currentRoomIsEnhanced || !plan || typeof plan !== "object") {
+      return plan;
+    }
+
+    const boostGoldReward = (reward) => {
+      if (!reward || typeof reward !== "object") {
+        return;
+      }
+      const amount = Number(reward.amount);
+      if (Number.isFinite(amount) && amount > 0) {
+        reward.amount = Math.max(1, Math.round(amount * ENHANCED_GOLD_MULTIPLIER));
+      }
+    };
+
+    if (Array.isArray(plan.gold)) {
+      if (plan.gold.length === 0) {
+        plan.gold = null;
+      } else {
+        plan.gold.forEach(boostGoldReward);
+      }
+    } else if (plan.gold) {
+      boostGoldReward(plan.gold);
+    } else {
+      plan.gold = { amount: 15, label: "Bonus" };
+    }
+
+    const mergeRewardOptions = (existing = [], additional = [], limit) => {
+      const merged = [];
+      const seen = new Set();
+      const addItem = (item) => {
+        if (!item) {
+          return;
+        }
+        const key =
+          (item.key ? String(item.key) : null) ||
+          (item.name ? `name:${item.name}` : null);
+        if (key && seen.has(key)) {
+          return;
+        }
+        if (key) {
+          seen.add(key);
+        }
+        merged.push(item);
+      };
+      existing.forEach(addItem);
+      additional.forEach(addItem);
+      if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
+        return merged.slice(0, limit);
+      }
+      return merged;
+    };
+
+    const wasDraftBefore = {
+      memory: plan.memory?.mode === "draft",
+      relic: plan.relic?.mode === "draft",
+      consumable: plan.consumable?.mode === "draft",
+    };
+
+    const ensureDraftForType = (type, generator, heading) => {
+      const rewardPlan = plan[type];
+      if (!rewardPlan || rewardPlan.mode === "none") {
+        return;
+      }
+      const existingOptions = Array.isArray(rewardPlan.options)
+        ? rewardPlan.options.slice()
+        : [];
+      const desiredCount = Math.max(existingOptions.length || 0, 3);
+      if (rewardPlan.mode === "draft") {
+        const additional = generator(desiredCount + 1);
+        rewardPlan.options = mergeRewardOptions(
+          existingOptions,
+          additional,
+          desiredCount + 1
+        );
+      } else if (rewardPlan.mode === "single") {
+        const additional = generator(Math.max(desiredCount, 3));
+        rewardPlan.mode = "draft";
+        rewardPlan.options = mergeRewardOptions(
+          existingOptions,
+          additional,
+          Math.max(desiredCount, 3)
+        );
+      }
+      if (!rewardPlan.heading && heading) {
+        rewardPlan.heading = heading;
+      }
+      if (rewardPlan.hideWhenNone === undefined) {
+        rewardPlan.hideWhenNone = false;
+      }
+    };
+
+    ensureDraftForType(
+      "memory",
+      (count) => generateMemoryRewardOptions(ctx, count),
+      "Draft a Memory"
+    );
+    ensureDraftForType(
+      "relic",
+      (count) => generateRelicRewardOptions(ctx, count),
+      "Draft a Relic"
+    );
+    ensureDraftForType(
+      "consumable",
+      (count) => generateConsumableRewardOptions(ctx, count),
+      "Draft a Consumable"
+    );
+
+    let extraConsumableDrafts = 0;
+    Object.entries(wasDraftBefore).forEach(([type, wasDraft]) => {
+      if (wasDraft && ["memory", "relic", "consumable"].includes(type)) {
+        extraConsumableDrafts += 1;
+      }
+    });
+
+    if (extraConsumableDrafts > 0) {
+      const consumablePlan = plan.consumable || {
+        mode: "draft",
+        options: [],
+        heading: "Draft a Consumable",
+        emptyText: "No consumables remain to claim.",
+        hideWhenNone: false,
+      };
+      const existingOptions = Array.isArray(consumablePlan.options)
+        ? consumablePlan.options.slice()
+        : [];
+      const desiredCount = Math.max(existingOptions.length + extraConsumableDrafts, 3);
+      const additional = generateConsumableRewardOptions(ctx, desiredCount);
+      consumablePlan.mode = "draft";
+      consumablePlan.options = mergeRewardOptions(
+        existingOptions,
+        additional,
+        desiredCount
+      );
+      consumablePlan.heading = consumablePlan.heading || "Draft a Consumable";
+      consumablePlan.emptyText =
+        consumablePlan.emptyText || "No consumables remain to claim.";
+      consumablePlan.hideWhenNone = false;
+      plan.consumable = consumablePlan;
+    }
+
+    return plan;
+  }
+
   function buildRewardPlan(ctx, encounterType) {
     const plan = {
       gold: null,
@@ -5587,12 +5971,12 @@
           plan.memory = { mode: "single", options: memoryOptions };
         } else if (relicOptions.length > 0) {
           plan.relic = { mode: "single", options: relicOptions };
-        }
+      }
         break;
       }
     }
 
-    return plan;
+    return applyEnhancedRewardAdjustments(ctx, plan);
   }
 
   const REWARD_TYPE_CONFIG = {
@@ -6820,6 +7204,13 @@
     ].forEach((sprite) => {
       if (sprite && sprite.src) {
         imagesToPreload.add(sprite.src);
+      }
+    });
+    imagesToPreload.add(DOOR_SPRITES.base);
+    imagesToPreload.add(DOOR_SPRITES.lock);
+    Object.values(DOOR_SPRITES.icons || {}).forEach((src) => {
+      if (src) {
+        imagesToPreload.add(src);
       }
     });
     preloadImages(Array.from(imagesToPreload));
