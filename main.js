@@ -201,8 +201,11 @@
           actionKey: "grapple",
           apCost: 2,
         });
-        applyStatus(target, "restrained", 1, { duration: 1 });
-        logCombat(combat, `${target.name} is restrained.`);
+        const passives = actor === combat.player ? combat.player.passives || {} : {};
+        const extra = passives.grappleRestrainedBonus || 0;
+        const stacks = 1 + extra;
+        applyStatus(target, "restrained", stacks, { duration: 1 });
+        logCombat(combat, `${target.name} is restrained (${stacks}).`);
       },
     },
     throw: {
@@ -288,8 +291,11 @@
         combat.player.temp.retaliateDamage += 2;
       },
       effect: ({ combat, actor }) => {
-        actor.block = (actor.block || 0) + 6;
-        logCombat(combat, `${actor.name} raises their guard (Block 6).`);
+        const passives = actor === combat.player ? combat.player.passives || {} : {};
+        const blockBonus = passives.guardBlockBonus || 0;
+        const blockAmount = 6 + blockBonus;
+        actor.block = (actor.block || 0) + blockAmount;
+        logCombat(combat, `${actor.name} raises their guard (Block ${blockAmount}).`);
       },
     },
     brace: {
@@ -305,6 +311,13 @@
         actor.block = (actor.block || 0) + 6;
         applyStatus(actor, "armor", 2, { duration: 2 });
         logCombat(combat, `${actor.name} braces behind solid defenses.`);
+        if (actor === combat.player && combat.player.passives.braceRetaliate) {
+          combat.player.temp.retaliateDamage += combat.player.passives.braceRetaliate;
+          logCombat(
+            combat,
+            `Knight's Oath Band grants Retaliate (${combat.player.passives.braceRetaliate}).`
+          );
+        }
       },
     },
     counter: {
@@ -318,7 +331,15 @@
       chain: { key: "fearCore", index: 2 },
       loopToStart: true,
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 8, {
+        let counterDamage = 8;
+        if (
+          actor === combat.player &&
+          actor.flags?.blockedSinceLastTurn &&
+          combat.player.passives.counterBlockedBonusDamage
+        ) {
+          counterDamage += combat.player.passives.counterBlockedBonusDamage;
+        }
+        dealDamage(combat, actor, target, counterDamage, {
           source: "Counter",
           actionKey: "counter",
           apCost: 3,
@@ -399,7 +420,15 @@
         combat.player.temp.critChance += 5;
       },
       effect: ({ combat, actor, target }) => {
-        dealDamage(combat, actor, target, 4, {
+        let sparkDamage = 4;
+        if (
+          actor === combat.player &&
+          combat.player.passives.sparkBuffBonus &&
+          combat.player.flags?.playedBuffThisTurn
+        ) {
+          sparkDamage += combat.player.passives.sparkBuffBonus;
+        }
+        dealDamage(combat, actor, target, sparkDamage, {
           source: "Spark",
           actionKey: "spark",
           apCost: 1,
@@ -418,6 +447,18 @@
       effect: ({ combat, actor }) => {
         actor.ap += 1;
         logCombat(combat, `${actor.name} is invigorated by festival light (+1 AP).`);
+        if (actor === combat.player && combat.player.passives.festivalLightCritBonus) {
+          applyStatus(
+            actor,
+            "critBuff",
+            combat.player.passives.festivalLightCritBonus,
+            { duration: 1 }
+          );
+          logCombat(
+            combat,
+            `Golden Lyre adds +${combat.player.passives.festivalLightCritBonus}% crit this turn.`
+          );
+        }
       },
     },
     elation: {
@@ -501,6 +542,9 @@
           apCost: 1,
         });
         applyStatus(target, "fatigue", 1, { duration: 2 });
+        if (actor === combat.player) {
+          onPlayerInflictFatigue(combat, 1);
+        }
       },
     },
     wither: {
@@ -519,6 +563,18 @@
           apCost: 2,
         });
         applyStatus(target, "bleed", 2, { duration: 3 });
+        if (actor === combat.player && combat.player.passives.witherAppliesExtraBleed) {
+          applyStatus(
+            target,
+            "bleed",
+            combat.player.passives.witherAppliesExtraBleed,
+            { duration: 3 }
+          );
+          logCombat(
+            combat,
+            `Dirge Bell deepens the wound (Bleed +${combat.player.passives.witherAppliesExtraBleed}).`
+          );
+        }
       },
     },
     breakthrough: {
@@ -563,6 +619,9 @@
           apCost: 3,
         });
         applyStatus(target, "fatigue", 1, { duration: 2 });
+        if (actor === combat.player) {
+          onPlayerInflictFatigue(combat, 1);
+        }
       },
     },
     shroudOfLoss: {
@@ -651,6 +710,9 @@
         });
         applyStatus(target, "bleed", 1, { duration: 2 });
         applyStatus(target, "fatigue", 1, { duration: 2 });
+        if (actor === combat.player) {
+          onPlayerInflictFatigue(combat, 1);
+        }
       },
     },
     blessedGuard: {
@@ -682,6 +744,9 @@
           apCost: 3,
         });
         applyStatus(target, "fatigue", 1, { duration: 2 });
+        if (actor === combat.player) {
+          onPlayerInflictFatigue(combat, 1);
+        }
       },
     },
     mockingWeep: {
@@ -1191,31 +1256,74 @@
       name: "Candle of Red Wax",
       emotion: "Anger",
       description:
-        "Bleed deals double damage and you heal for half the damage it inflicts.",
-      passive: { bleedMultiplier: 2, bleedHealFraction: 0.5 },
+        "Bleed deals +1 damage per stack each turn. Heal for half the bleed damage dealt.",
+      passive: { bleedBonus: 1, bleedHealFraction: 0.5 },
     },
     {
-      key: "relicIronGauntlet",
-      name: "Iron Gauntlet with Broken Knuckles",
+      key: "relicBrassKnuckles",
+      name: "Brass Knuckles",
       emotion: "Anger",
-      description: "Attacks that cost 1 AP deal +3 damage.",
-      passive: { lowApAttackBonus: 3 },
+      description:
+        "Strike deals +3 damage. After Strike, your next Grapple this turn costs −1 AP.",
+      passive: { strikeDamageBonus: 3, grappleDiscountAfterStrike: 1 },
     },
     {
-      key: "relicCarouselKey",
-      name: "Cebarti's Carousel Key",
-      emotion: "Fear",
-      description:
-        "Each time you cycle a chain, gain Armor (1). Every third cycle deals 3 damage to the enemy.",
-      passive: { applyCycleArmor: 1, cycleDamageFrequency: 3, cycleDamageAmount: 3 },
+      key: "relicRustedChains",
+      name: "Rusted Chains",
+      emotion: "Anger",
+      description: "Grapple applies Restrained (2) instead of (1).",
+      passive: { grappleRestrainedBonus: 1 },
+    },
+    {
+      key: "relicSkullDice",
+      name: "Skull Dice",
+      emotion: "Anger",
+      description: "While Strike is face-up, gain +15% critical chance.",
+      passive: { strikeFaceUpCritBonus: 15 },
+    },
+    {
+      key: "relicAshenBrand",
+      name: "Ashen Brand",
+      emotion: "Anger",
+      description: "Whenever Throw deals damage, apply Vulnerable (1).",
+      passive: { throwAppliesVulnerable: 1 },
     },
     {
       key: "relicPorcelainRat",
       name: "Porcelain Rat Figurine",
       emotion: "Fear",
       description:
-        "When an enemy attack misses you, it falters and skips its next action.",
-      passive: { stallEnemyOnMiss: true },
+        "Each turn you block 10+ damage, apply Dazed (1) to the foe.",
+      passive: { blockThresholdDaze: 10, blockThresholdDazeStacks: 1 },
+    },
+    {
+      key: "relicIronWallPlate",
+      name: "Iron Wall Plate",
+      emotion: "Fear",
+      description: "Guard provides +4 additional Block.",
+      passive: { guardBlockBonus: 4 },
+    },
+    {
+      key: "relicKnightsOath",
+      name: "Knight's Oath Band",
+      emotion: "Fear",
+      description: "When you Brace, gain Retaliate (2).",
+      passive: { braceRetaliate: 2 },
+    },
+    {
+      key: "relicTarnishedSpear",
+      name: "Tarnished Spear",
+      emotion: "Fear",
+      description: "Counter deals +5 damage if you blocked since last turn.",
+      passive: { counterBlockedBonusDamage: 5 },
+    },
+    {
+      key: "relicStoneGuardian",
+      name: "Stone Guardian Idol",
+      emotion: "Fear",
+      description:
+        "At end of your turn, if you played no attacks, gain Armor (2) for the fight.",
+      passive: { armorGainNoAttack: 2 },
     },
     {
       key: "relicLanternFestival",
@@ -1225,50 +1333,67 @@
       passive: { buffGrantsEssenceRegen: 1 },
     },
     {
-      key: "relicLaughingMask",
-      name: "Laughing Mask",
+      key: "relicConfettiPouch",
+      name: "Confetti Pouch",
       emotion: "Joy",
-      description:
-        "Buff actions cost –1 AP but deal 1 self-damage when used.",
-      passive: { buffCostReductionFlat: 1, buffSelfDamage: 1 },
+      description: "Spark deals +3 damage if you played a buff this turn.",
+      passive: { sparkBuffBonus: 3 },
     },
     {
-      key: "relicBurialUrn",
-      name: "Burial Urn with Cracked Lid",
+      key: "relicGoldenLyre",
+      name: "Golden Lyre",
+      emotion: "Joy",
+      description: "Festival Light also grants +5% Critical Chance to allies this turn.",
+      passive: { festivalLightCritBonus: 5 },
+    },
+    {
+      key: "relicBellRevelry",
+      name: "Bell of Revelry",
+      emotion: "Joy",
+      description: "At end of turn, if you played Elation, heal 3 additional Essence.",
+      passive: { elationEndHeal: 3 },
+    },
+    {
+      key: "relicMirrorMask",
+      name: "Mirror Mask",
+      emotion: "Joy",
+      description: "The first buff you play each combat is duplicated.",
+      passive: { firstBuffDuplicated: true },
+    },
+    {
+      key: "relicDirgeBell",
+      name: "Dirge Bell",
       emotion: "Sadness",
-      description: "When you burn your last action, gain +3 AP next turn.",
-      passive: { apBonusOnEmpty: 3 },
+      description: "Wither applies Bleed (1) in addition to its normal effect.",
+      passive: { witherAppliesExtraBleed: 1 },
     },
     {
-      key: "relicTatteredVeil",
-      name: "Tattered Mourning Veil",
+      key: "relicObsidianTear",
+      name: "Obsidian Tear Pendant",
       emotion: "Sadness",
-      description:
-        "Essence costs are reduced by 1 (minimum 0) but you lose 1 Essence at the start of each turn.",
-      passive: { essenceCostReduction: 1, startTurnEssenceLoss: 1 },
+      description: "Breakthrough costs 1 less AP if the enemy has Fatigue.",
+      passive: { breakthroughFatigueDiscount: 1 },
     },
     {
-      key: "relicVictoryBanner",
-      name: "Victory Banner",
-      emotion: "Anger + Joy",
-      description:
-        "After you play a buff, your next attack this turn deals double damage.",
-      passive: { doubleNextAttackAfterBuff: true },
+      key: "relicGraveSoil",
+      name: "Grave Soil Jar",
+      emotion: "Sadness",
+      description: "Whenever you inflict Fatigue, gain +1 AP next turn.",
+      passive: { fatigueApBonus: 1 },
     },
     {
-      key: "relicCandlelitHourglass",
-      name: "Candlelit Hourglass",
-      emotion: "Fear + Joy",
-      description: "At end of turn, convert unused AP into Essence.",
-      passive: { convertUnusedApToEssence: true },
+      key: "relicMourningVeil",
+      name: "Veil of Mourning Silk",
+      emotion: "Sadness",
+      description: "While Burden is face-up, gain Armor (1).",
+      passive: { burdenFaceUpArmor: 1 },
     },
     {
-      key: "relicFracturedMirror",
-      name: "Fractured Mirror",
-      emotion: "Colorless",
-      description:
-        "The last action you play each turn has a 25% chance to repeat at +1 AP cost.",
-      passive: { repeatLastActionChance: 0.25 },
+      key: "relicTombKey",
+      name: "Tomb Key",
+      emotion: "Sadness",
+      description: "If you played Breakthrough this combat, gain +15 gold at victory.",
+      passive: { breakthroughGoldReward: 15 },
     },
   ];
 
@@ -3330,23 +3455,30 @@
       dirgeCostReduction: 0,
       roarAppliesVulnerable: false,
       buffCostReductionWhileFaceUp: false,
-      buffCostReductionFlat: 0,
       songEssenceRegen: 0,
       laughterDamageBonus: 0,
       emptySlotCritBonus: 0,
-      lowApAttackBonus: 0,
-      buffSelfDamage: 0,
-      startTurnEssenceLoss: 0,
-      essenceCostReduction: 0,
-      convertUnusedApToEssence: false,
-      applyCycleArmor: 0,
-      cycleDamageFrequency: 0,
-      cycleDamageAmount: 0,
-      stallEnemyOnMiss: false,
-      doubleNextAttackAfterBuff: false,
-      apBonusOnEmpty: 0,
       buffGrantsEssenceRegen: 0,
-      repeatLastActionChance: 0,
+      strikeDamageBonus: 0,
+      grappleDiscountAfterStrike: 0,
+      grappleRestrainedBonus: 0,
+      strikeFaceUpCritBonus: 0,
+      throwAppliesVulnerable: 0,
+      blockThresholdDaze: 0,
+      blockThresholdDazeStacks: 0,
+      guardBlockBonus: 0,
+      braceRetaliate: 0,
+      counterBlockedBonusDamage: 0,
+      armorGainNoAttack: 0,
+      sparkBuffBonus: 0,
+      festivalLightCritBonus: 0,
+      elationEndHeal: 0,
+      firstBuffDuplicated: false,
+      witherAppliesExtraBleed: 0,
+      breakthroughFatigueDiscount: 0,
+      fatigueApBonus: 0,
+      burdenFaceUpArmor: 0,
+      breakthroughGoldReward: 0,
     };
   }
 
@@ -3397,60 +3529,77 @@
       if (typeof passive.bleedBonus === "number") {
         summary.bleedBonus += passive.bleedBonus;
       }
+      if (typeof passive.buffGrantsEssenceRegen === "number") {
+        summary.buffGrantsEssenceRegen += passive.buffGrantsEssenceRegen;
+      }
       if (typeof passive.bleedMultiplier === "number") {
         summary.bleedMultiplier *= passive.bleedMultiplier;
       }
       if (typeof passive.bleedHealFraction === "number") {
         summary.bleedHealFraction += passive.bleedHealFraction;
       }
-      if (typeof passive.lowApAttackBonus === "number") {
-        summary.lowApAttackBonus += passive.lowApAttackBonus;
+      if (typeof passive.strikeDamageBonus === "number") {
+        summary.strikeDamageBonus += passive.strikeDamageBonus;
       }
-      if (typeof passive.buffCostReductionFlat === "number") {
-        summary.buffCostReductionFlat += passive.buffCostReductionFlat;
+      if (typeof passive.grappleDiscountAfterStrike === "number") {
+        summary.grappleDiscountAfterStrike += passive.grappleDiscountAfterStrike;
       }
-      if (typeof passive.buffSelfDamage === "number") {
-        summary.buffSelfDamage += passive.buffSelfDamage;
+      if (typeof passive.grappleRestrainedBonus === "number") {
+        summary.grappleRestrainedBonus += passive.grappleRestrainedBonus;
       }
-      if (typeof passive.essenceCostReduction === "number") {
-        summary.essenceCostReduction += passive.essenceCostReduction;
+      if (typeof passive.strikeFaceUpCritBonus === "number") {
+        summary.strikeFaceUpCritBonus += passive.strikeFaceUpCritBonus;
       }
-      if (typeof passive.startTurnEssenceLoss === "number") {
-        summary.startTurnEssenceLoss += passive.startTurnEssenceLoss;
+      if (typeof passive.throwAppliesVulnerable === "number") {
+        summary.throwAppliesVulnerable += passive.throwAppliesVulnerable;
       }
-      if (passive.convertUnusedApToEssence) {
-        summary.convertUnusedApToEssence = true;
+      if (typeof passive.blockThresholdDaze === "number" && passive.blockThresholdDaze > 0) {
+        summary.blockThresholdDaze =
+          summary.blockThresholdDaze > 0
+            ? Math.min(summary.blockThresholdDaze, passive.blockThresholdDaze)
+            : passive.blockThresholdDaze;
       }
-      if (typeof passive.applyCycleArmor === "number") {
-        summary.applyCycleArmor += passive.applyCycleArmor;
+      if (typeof passive.blockThresholdDazeStacks === "number") {
+        summary.blockThresholdDazeStacks += passive.blockThresholdDazeStacks;
       }
-      if (typeof passive.cycleDamageFrequency === "number" && passive.cycleDamageFrequency > 0) {
-        summary.cycleDamageFrequency =
-          summary.cycleDamageFrequency || passive.cycleDamageFrequency;
+      if (typeof passive.guardBlockBonus === "number") {
+        summary.guardBlockBonus += passive.guardBlockBonus;
       }
-      if (typeof passive.cycleDamageAmount === "number" && passive.cycleDamageAmount > 0) {
-        summary.cycleDamageAmount = Math.max(
-          summary.cycleDamageAmount,
-          passive.cycleDamageAmount
-        );
+      if (typeof passive.braceRetaliate === "number") {
+        summary.braceRetaliate += passive.braceRetaliate;
       }
-      if (passive.stallEnemyOnMiss) {
-        summary.stallEnemyOnMiss = true;
+      if (typeof passive.counterBlockedBonusDamage === "number") {
+        summary.counterBlockedBonusDamage += passive.counterBlockedBonusDamage;
       }
-      if (passive.doubleNextAttackAfterBuff) {
-        summary.doubleNextAttackAfterBuff = true;
+      if (typeof passive.armorGainNoAttack === "number") {
+        summary.armorGainNoAttack += passive.armorGainNoAttack;
       }
-      if (typeof passive.apBonusOnEmpty === "number") {
-        summary.apBonusOnEmpty += passive.apBonusOnEmpty;
+      if (typeof passive.sparkBuffBonus === "number") {
+        summary.sparkBuffBonus += passive.sparkBuffBonus;
       }
-      if (typeof passive.buffGrantsEssenceRegen === "number") {
-        summary.buffGrantsEssenceRegen += passive.buffGrantsEssenceRegen;
+      if (typeof passive.festivalLightCritBonus === "number") {
+        summary.festivalLightCritBonus += passive.festivalLightCritBonus;
       }
-      if (typeof passive.repeatLastActionChance === "number") {
-        summary.repeatLastActionChance = Math.min(
-          1,
-          summary.repeatLastActionChance + passive.repeatLastActionChance
-        );
+      if (typeof passive.elationEndHeal === "number") {
+        summary.elationEndHeal += passive.elationEndHeal;
+      }
+      if (passive.firstBuffDuplicated) {
+        summary.firstBuffDuplicated = true;
+      }
+      if (typeof passive.witherAppliesExtraBleed === "number") {
+        summary.witherAppliesExtraBleed += passive.witherAppliesExtraBleed;
+      }
+      if (typeof passive.breakthroughFatigueDiscount === "number") {
+        summary.breakthroughFatigueDiscount += passive.breakthroughFatigueDiscount;
+      }
+      if (typeof passive.fatigueApBonus === "number") {
+        summary.fatigueApBonus += passive.fatigueApBonus;
+      }
+      if (typeof passive.burdenFaceUpArmor === "number") {
+        summary.burdenFaceUpArmor += passive.burdenFaceUpArmor;
+      }
+      if (typeof passive.breakthroughGoldReward === "number") {
+        summary.breakthroughGoldReward += passive.breakthroughGoldReward;
       }
     });
     return summary;
@@ -3465,15 +3614,25 @@
       "songEssenceRegen",
       "laughterDamageBonus",
       "emptySlotCritBonus",
-      "buffCostReductionFlat",
-      "lowApAttackBonus",
-      "buffSelfDamage",
-      "startTurnEssenceLoss",
-      "essenceCostReduction",
-      "applyCycleArmor",
-      "cycleDamageAmount",
-      "apBonusOnEmpty",
       "buffGrantsEssenceRegen",
+      "strikeDamageBonus",
+      "grappleDiscountAfterStrike",
+      "grappleRestrainedBonus",
+      "strikeFaceUpCritBonus",
+      "throwAppliesVulnerable",
+      "blockThresholdDazeStacks",
+      "guardBlockBonus",
+      "braceRetaliate",
+      "counterBlockedBonusDamage",
+      "armorGainNoAttack",
+      "sparkBuffBonus",
+      "festivalLightCritBonus",
+      "elationEndHeal",
+      "witherAppliesExtraBleed",
+      "breakthroughFatigueDiscount",
+      "fatigueApBonus",
+      "burdenFaceUpArmor",
+      "breakthroughGoldReward",
     ];
     numericKeys.forEach((key) => {
       combined[key] =
@@ -3490,24 +3649,16 @@
       memorySummary.buffCostReductionWhileFaceUp ||
         relicSummary.buffCostReductionWhileFaceUp
     );
-    combined.convertUnusedApToEssence = Boolean(
-      memorySummary.convertUnusedApToEssence ||
-        relicSummary.convertUnusedApToEssence
+    combined.firstBuffDuplicated = Boolean(
+      memorySummary.firstBuffDuplicated || relicSummary.firstBuffDuplicated
     );
-    combined.stallEnemyOnMiss = Boolean(
-      memorySummary.stallEnemyOnMiss || relicSummary.stallEnemyOnMiss
-    );
-    combined.doubleNextAttackAfterBuff = Boolean(
-      memorySummary.doubleNextAttackAfterBuff ||
-        relicSummary.doubleNextAttackAfterBuff
-    );
-    combined.repeatLastActionChance = Math.min(
-      1,
-      (memorySummary.repeatLastActionChance || 0) +
-        (relicSummary.repeatLastActionChance || 0)
-    );
-    combined.cycleDamageFrequency =
-      relicSummary.cycleDamageFrequency || memorySummary.cycleDamageFrequency || 0;
+    const blockThresholds = [
+      memorySummary.blockThresholdDaze,
+      relicSummary.blockThresholdDaze,
+    ].filter((value) => typeof value === "number" && value > 0);
+    combined.blockThresholdDaze = blockThresholds.length
+      ? Math.min(...blockThresholds)
+      : 0;
     return combined;
   }
 
@@ -3790,15 +3941,13 @@
     }
     combat.turn = "player";
     logCombat(combat, `Round ${combat.round}: Your essence rallies.`);
+    combat.player.flags = combat.player.flags || {};
+    combat.player.flags.playedAttackThisTurn = false;
+    combat.player.flags.playedBuffThisTurn = false;
+    combat.player.flags.brassKnucklesReady = false;
+    combat.player.flags.elationPlayedThisTurn = false;
+    combat.player.flags.burdenArmorGranted = 0;
     applyStartOfTurnStatuses(combat, combat.player, "player");
-    if (combat.player.passives.startTurnEssenceLoss) {
-      const loss = combat.player.passives.startTurnEssenceLoss;
-      combat.player.essence = Math.max(0, combat.player.essence - loss);
-      logCombat(
-        combat,
-        `The mourning veil saps ${loss} Essence as the turn begins.`
-      );
-    }
     if (combat.player.essence <= 0) {
       handleDefeat(combat);
       return;
@@ -3896,12 +4045,10 @@
       combat.player.temp.critChance +=
         combat.player.passives.emptySlotCritBonus * emptySlots;
     }
-    if (combat.player.passives.buffCostReductionFlat) {
-      combat.player.temp.buffCostReduction += combat.player.passives.buffCostReductionFlat;
-    }
     combat.player.temp.damageBonus += combat.player.passives.laughterDamageBonus || 0;
     combat.player.temp.essenceRegen += combat.player.passives.songEssenceRegen || 0;
 
+    let burdenArmorStacks = 0;
     combat.actionSlots.forEach((slot) => {
       if (!slot) {
         return;
@@ -3916,7 +4063,28 @@
       if (action.type === "buff" && combat.player.passives.buffCostReductionWhileFaceUp) {
         combat.player.temp.buffCostReduction += 1;
       }
+      if (slot.actionKey === "strike" && combat.player.passives.strikeFaceUpCritBonus) {
+        combat.player.temp.critChance += combat.player.passives.strikeFaceUpCritBonus;
+      }
+      if (slot.actionKey === "burden" && combat.player.passives.burdenFaceUpArmor) {
+        burdenArmorStacks += combat.player.passives.burdenFaceUpArmor;
+      }
     });
+
+    const previousBurdenArmor = combat.player.flags.burdenArmorGranted || 0;
+    if (burdenArmorStacks > 0) {
+      const additionalArmor = Math.max(0, burdenArmorStacks - previousBurdenArmor);
+      if (additionalArmor > 0) {
+        combat.player.armor = (combat.player.armor || 0) + additionalArmor;
+        logCombat(
+          combat,
+          `The mourning veil steels you (+${additionalArmor} Armor).`
+        );
+      }
+      combat.player.flags.burdenArmorGranted = burdenArmorStacks;
+    } else {
+      combat.player.flags.burdenArmorGranted = 0;
+    }
 
     if (
       combat.player.passives.buffGrantsEssenceRegen &&
@@ -3942,6 +4110,20 @@
     if (action.key === "dirge" && combat.player.passives.dirgeCostReduction) {
       cost = Math.max(0, cost - combat.player.passives.dirgeCostReduction);
     }
+    if (
+      action.key === "breakthrough" &&
+      combat.player.passives.breakthroughFatigueDiscount &&
+      hasStatus(combat.enemy, "fatigue")
+    ) {
+      cost = Math.max(0, cost - combat.player.passives.breakthroughFatigueDiscount);
+    }
+    if (
+      action.key === "grapple" &&
+      combat.player.passives.grappleDiscountAfterStrike &&
+      combat.player.flags?.brassKnucklesReady
+    ) {
+      cost = Math.max(0, cost - combat.player.passives.grappleDiscountAfterStrike);
+    }
     const discount = combat.player.flags?.discountNextAction || 0;
     if (discount > 0) {
       cost = Math.max(0, cost - discount);
@@ -3953,10 +4135,8 @@
     if (!action || !action.cost) {
       return 0;
     }
-    const passives = combat?.player?.passives || {};
-    const reduction = Number(passives.essenceCostReduction) || 0;
     const cost = Number(action.cost.essence) || 0;
-    return Math.max(0, cost - reduction);
+    return Math.max(0, cost);
   }
 
   function performPlayerAction(combat, slotIndex) {
@@ -4024,21 +4204,42 @@
       combat.player.flags.lastAction = { key: action.key, name: action.name };
     }
 
+    let duplicateBuff = false;
     if (action.type === "buff") {
-      if (combat.player.passives.doubleNextAttackAfterBuff) {
-        combat.player.flags = combat.player.flags || {};
-        combat.player.flags.victoryBannerReady = true;
-        logCombat(combat, "Victory Banner readies your next attack.");
+      combat.player.flags.playedBuffThisTurn = true;
+      if (
+        combat.player.passives.firstBuffDuplicated &&
+        !combat.player.flags.mirrorMaskTriggered
+      ) {
+        combat.player.flags.mirrorMaskTriggered = true;
+        duplicateBuff = true;
       }
-      if (combat.player.passives.buffSelfDamage) {
-        const selfDamage = combat.player.passives.buffSelfDamage;
-        combat.player.essence = Math.max(0, combat.player.essence - selfDamage);
-        logCombat(combat, `The mask bites back for ${selfDamage} self-damage.`);
-        if (combat.player.essence <= 0) {
-          handleDefeat(combat);
-          return;
-        }
-      }
+    }
+    if (action.type === "attack") {
+      combat.player.flags.playedAttackThisTurn = true;
+    }
+    if (action.key === "strike") {
+      combat.player.flags.brassKnucklesReady = true;
+    }
+    if (action.key === "grapple") {
+      combat.player.flags.brassKnucklesReady = false;
+    }
+    if (action.key === "elation") {
+      combat.player.flags.elationPlayedThisTurn = true;
+    }
+    if (action.key === "breakthrough") {
+      combat.player.flags.breakthroughPlayedThisCombat = true;
+    }
+
+    if (duplicateBuff) {
+      action.effect?.({
+        combat,
+        actor: combat.player,
+        target: combat.enemy,
+        slot,
+        apCost,
+      });
+      logCombat(combat, `${action.name} reverberates through the mirror mask.`);
     }
 
     advanceSlotChain(combat, slot, action, slotIndex);
@@ -4046,40 +4247,6 @@
     if (combat.enemy.essence <= 0) {
       handleVictory(combat);
       return;
-    }
-
-    if (
-      combat.player.passives.repeatLastActionChance > 0 &&
-      action.cost?.ap !== "variable"
-    ) {
-      const chance = combat.player.passives.repeatLastActionChance;
-      if (Math.random() < chance) {
-        const repeatCost = Math.max(0, apCost + 1);
-        if (repeatCost <= combat.player.ap) {
-          combat.player.ap -= repeatCost;
-          logCombat(combat, `Fractured Mirror repeats ${action.name}.`);
-          action.effect?.({
-            combat,
-            actor: combat.player,
-            target: combat.enemy,
-            slot: null,
-            apCost: repeatCost,
-          });
-          combat.player.history.push({
-            key: action.key,
-            name: `${action.name} (Mirror)`,
-          });
-          if (combat.enemy.essence <= 0) {
-            handleVictory(combat);
-            return;
-          }
-        } else {
-          logCombat(
-            combat,
-            "The mirror strains to repeat the action but you lack the AP."
-          );
-        }
-      }
     }
 
     applyFacingEffects(combat);
@@ -4112,49 +4279,8 @@
       }
     }
 
-    if (cycled) {
-      if (combat.player.passives.applyCycleArmor) {
-        applyStatus(
-          combat.player,
-          "armor",
-          combat.player.passives.applyCycleArmor,
-          { duration: 1 }
-        );
-        logCombat(combat, "Carousel Key reinforces your defenses.");
-      }
-      if (combat.player.passives.cycleDamageFrequency) {
-        combat.player.flags = combat.player.flags || {};
-        combat.player.flags.cycleCount = (combat.player.flags.cycleCount || 0) + 1;
-        if (
-          combat.player.flags.cycleCount %
-            combat.player.passives.cycleDamageFrequency ===
-            0 &&
-          combat.player.passives.cycleDamageAmount > 0
-        ) {
-          dealDamage(
-            combat,
-            combat.player,
-            combat.enemy,
-            combat.player.passives.cycleDamageAmount,
-            { source: "Carousel Lash" }
-          );
-        }
-      }
-    }
-
     if (slot.consumed || !slot.actionKey) {
       combat.actionSlots[index] = null;
-    }
-
-    if (
-      combat.player.passives.apBonusOnEmpty &&
-      combat.actionSlots.every((entry) => entry === null)
-    ) {
-      combat.player.pendingApBonus += combat.player.passives.apBonusOnEmpty;
-      logCombat(
-        combat,
-        `The burial urn promises +${combat.player.passives.apBonusOnEmpty} AP next turn.`
-      );
     }
   }
 
@@ -4167,17 +4293,31 @@
     combat.player.flags.blockedSinceLastTurn = false;
     combat.player.pendingApBonus += combat.player.temp.nextTurnApBonus || 0;
     applyEndOfTurnStatuses(combat, combat.player);
-    if (combat.player.passives.convertUnusedApToEssence) {
-      const unspent = combat.player.ap;
-      if (unspent > 0) {
-        combat.player.ap = 0;
-        healCombatant(combat, combat.player, unspent);
+    if (
+      combat.player.passives.armorGainNoAttack &&
+      !combat.player.flags.playedAttackThisTurn
+    ) {
+      combat.player.armor =
+        (combat.player.armor || 0) + combat.player.passives.armorGainNoAttack;
+      logCombat(
+        combat,
+        `Stone Guardian Idol fortifies you (+${combat.player.passives.armorGainNoAttack} Armor).`
+      );
+    }
+    if (
+      combat.player.passives.elationEndHeal &&
+      combat.player.flags.elationPlayedThisTurn
+    ) {
+      const healAmount = combat.player.passives.elationEndHeal;
+      if (healAmount > 0) {
+        healCombatant(combat, combat.player, healAmount);
         logCombat(
           combat,
-          `Candlelit Hourglass converts your ${unspent} unused AP into Essence.`
+          `Bell of Revelry restores ${healAmount} Essence at turn's end.`
         );
       }
     }
+    combat.player.flags.elationPlayedThisTurn = false;
     combat.actionSlots = combat.actionSlots.map((slot) =>
       slot && slot.retained && !slot.consumed ? slot : null
     );
@@ -4190,6 +4330,8 @@
       return;
     }
     combat.turn = "enemy";
+    combat.player.flags = combat.player.flags || {};
+    combat.player.flags.blockedDamageThisTurn = 0;
     applyStartOfTurnStatuses(combat, combat.enemy, "enemy");
     const pendingDaze =
       getStatusStacks(combat.enemy, "dazed") + (combat.enemy.flags?.pendingDaze || 0);
@@ -4699,6 +4841,17 @@
         logCombat(combat, "The rusted key yields a cache of 20 gold.");
         combat.player.flags.unsealFaceUp = false;
       }
+      const breakthroughReward = Number(
+        combat.player.passives?.breakthroughGoldReward || 0
+      );
+      if (breakthroughReward > 0 && combat.player.flags?.breakthroughPlayedThisCombat) {
+        addGold(breakthroughReward, combat.ctx);
+        logCombat(
+          combat,
+          `The tomb key grants ${breakthroughReward} gold for your breakthrough.`
+        );
+        combat.player.flags.breakthroughPlayedThisCombat = false;
+      }
     }
     state.activeCombat = null;
     if (combat.dom.continueButton) {
@@ -4747,8 +4900,12 @@
       options.forceAttack || (actionDef && actionDef.type === "attack")
     );
     let baseAmount = amount;
-    if (isPlayerActor && passives.lowApAttackBonus && actionApCost === 1) {
-      baseAmount += passives.lowApAttackBonus;
+    if (
+      isPlayerActor &&
+      options.actionKey === "strike" &&
+      passives.strikeDamageBonus
+    ) {
+      baseAmount += passives.strikeDamageBonus;
     }
 
     let damage = baseAmount;
@@ -4767,11 +4924,6 @@
     const vulnerableStacks = getStatusStacks(target, "vulnerable");
     if (vulnerableStacks > 0) {
       damage = Math.round(damage * 1.5);
-    }
-    if (isPlayerActor && isAttackAction && combat.player.flags?.victoryBannerReady) {
-      damage = Math.round(damage * 2);
-      combat.player.flags.victoryBannerReady = false;
-      logCombat(combat, "Victory Banner ignites your next strike.");
     }
 
     let attackMissed = false;
@@ -4803,6 +4955,24 @@
         if (target === combat.player) {
           target.flags = target.flags || {};
           target.flags.blockedSinceLastTurn = true;
+          const threshold = passives.blockThresholdDaze || 0;
+          if (threshold > 0) {
+            combat.player.flags = combat.player.flags || {};
+            combat.player.flags.blockedDamageThisTurn =
+              (combat.player.flags.blockedDamageThisTurn || 0) + absorbed;
+            const stacks = Math.max(1, passives.blockThresholdDazeStacks || 1);
+            while (combat.player.flags.blockedDamageThisTurn >= threshold) {
+              combat.player.flags.blockedDamageThisTurn -= threshold;
+              applyStatus(combat.enemy, "dazed", stacks, { duration: 1 });
+              combat.enemy.flags = combat.enemy.flags || {};
+              combat.enemy.flags.pendingDaze =
+                (combat.enemy.flags.pendingDaze || 0) + stacks;
+              logCombat(
+                combat,
+                `Porcelain Rat startles ${combat.enemy.name}, applying Dazed (${stacks}).`
+              );
+            }
+          }
         }
       }
     }
@@ -4820,11 +4990,6 @@
     }
 
     if (attackMissed) {
-      if (actor.side === "enemy" && passives.stallEnemyOnMiss) {
-        actor.flags = actor.flags || {};
-        actor.flags.stalled = (actor.flags.stalled || 0) + 1;
-        logCombat(combat, `${actor.name} staggers, losing their next action.`);
-      }
       return;
     }
 
@@ -4839,6 +5004,14 @@
       combat,
       `${options.source || "The attack"} deals ${damage} damage to ${target.name}.`
     );
+
+    if (isPlayerActor && options.actionKey === "throw" && passives.throwAppliesVulnerable) {
+      applyStatus(target, "vulnerable", passives.throwAppliesVulnerable, { duration: 2 });
+      logCombat(
+        combat,
+        `Ashen Brand brands ${target.name} with Vulnerable (${passives.throwAppliesVulnerable}).`
+      );
+    }
 
     if (target === combat.player && target.temp?.retaliateDamage && actor !== target) {
       const retaliation = target.temp.retaliateDamage;
@@ -4865,6 +5038,22 @@
         handleDefeat(combat);
       }
     }
+  }
+
+  function onPlayerInflictFatigue(combat, stacks = 1) {
+    if (!combat?.player?.passives?.fatigueApBonus) {
+      return;
+    }
+    const bonus = combat.player.passives.fatigueApBonus;
+    const total = bonus * Math.max(1, stacks);
+    if (total <= 0) {
+      return;
+    }
+    combat.player.pendingApBonus += total;
+    logCombat(
+      combat,
+      `Grave Soil Jar stores +${total} AP for your next turn.`
+    );
   }
 
   function healCombatant(combat, combatant, amount) {
