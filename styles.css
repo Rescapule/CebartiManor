@@ -463,6 +463,35 @@ button {
   text-transform: uppercase;
 }
 
+.merchant-panel {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  background: rgba(12, 6, 3, 0.55);
+  border: 1px solid rgba(214, 179, 112, 0.35);
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.merchant-panel__description {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(255, 233, 189, 0.85);
+}
+
+.merchant-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.merchant-panel__rewards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
 .inventory-overlay {
   position: fixed;
   inset: 0;
@@ -725,6 +754,16 @@ button {
   margin: 0;
   font-size: 0.9rem;
   color: var(--color-muted);
+}
+
+.combat-rewards__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.combat-rewards__skip {
+  align-self: flex-start;
 }
 
 .door-button--amber {

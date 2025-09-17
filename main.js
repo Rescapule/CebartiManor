@@ -1811,7 +1811,27 @@
         });
         footer.appendChild(continueButton);
 
-        wrapper.append(encounterScene.scene, prompt, footer);
+        wrapper.append(encounterScene.scene, prompt);
+
+        if (encounterType === "treasure") {
+          const { panel: rewardsPanel } = createRewardsPanel(ctx, {
+            encounterType: "treasure",
+            continueButton,
+          });
+          if (rewardsPanel) {
+            wrapper.appendChild(rewardsPanel);
+          }
+          wrapper.appendChild(footer);
+          return wrapper;
+        }
+
+        if (encounterType === "merchant") {
+          const merchantPanel = createMerchantPanel(ctx, continueButton);
+          wrapper.append(merchantPanel, footer);
+          return wrapper;
+        }
+
+        wrapper.appendChild(footer);
         return wrapper;
       },
     },
@@ -2767,6 +2787,8 @@
         return name
           ? `${name} gathers its strength for a decisive clash.`
           : "A boss spirit towers over the foyer awaiting your challenge.";
+      case "treasure":
+        return "Glittering relics and bottled memories await your discerning grasp.";
       case "merchant":
         return name
           ? `You trade hushed words with ${name}, bartering for forbidden goods.`
@@ -3083,12 +3105,19 @@
       moves: DEFAULT_ENEMY_MOVES,
     };
     const multiplier = getEncounterScaling(encounterType);
+    const baseEnemyEssence = enemyDefinition.maxEssence || 12;
+    const scaledEnemyEssence = Math.max(1, scaleValue(baseEnemyEssence, multiplier));
+    const adjustedEnemyEssence =
+      encounterType === "boss"
+        ? Math.max(1, Math.round(scaledEnemyEssence / 2))
+        : scaledEnemyEssence;
+
     const enemy = {
       id: "enemy",
       side: "enemy",
       name: sprite.name || "Hostile Spirit",
-      maxEssence: Math.max(1, scaleValue(enemyDefinition.maxEssence || 12, multiplier)),
-      essence: Math.max(1, scaleValue(enemyDefinition.maxEssence || 12, multiplier)),
+      maxEssence: adjustedEnemyEssence,
+      essence: adjustedEnemyEssence,
       statuses: {},
       block: 0,
       armor: 0,
@@ -3216,6 +3245,7 @@
       enemyPanel: enemyDisplay.container,
       enemyStats: enemyDisplay.stats,
       enemyStatuses: enemyDisplay.statusList,
+      footer,
       continueButton,
     };
 
@@ -3749,17 +3779,6 @@
     }
   }
 
-  function getGoldRewardAmount(encounterType) {
-    switch (encounterType) {
-      case "elite":
-        return 35;
-      case "boss":
-        return 60;
-      default:
-        return 15;
-    }
-  }
-
   function generateMemoryRewardOptions(ctx, count) {
     const owned = new Set(ctx.state.playerMemories || []);
     const pool = MEMORY_DEFINITIONS.filter((memory) => !owned.has(memory.key));
@@ -3774,182 +3793,376 @@
     return sampleWithoutReplacement(fallback, count);
   }
 
-  function grantRandomConsumable(ctx) {
-    const option = sampleWithoutReplacement(CONSUMABLE_DEFINITIONS, 1)[0];
-    if (option) {
-      addConsumable(option.key, 1, ctx);
-      return option;
+  function rollDice(count, sides) {
+    let total = 0;
+    const dieCount = Math.max(0, Math.floor(Number(count) || 0));
+    const dieSides = Math.max(1, Math.floor(Number(sides) || 0));
+    for (let i = 0; i < dieCount; i += 1) {
+      total += Math.floor(Math.random() * dieSides) + 1;
     }
-    return null;
+    return total;
+  }
+
+  function buildRewardPlan(ctx, encounterType) {
+    const plan = {
+      gold: null,
+      memory: { mode: "none", options: [] },
+      relic: { mode: "none", options: [] },
+    };
+
+    switch (encounterType) {
+      case "elite": {
+        plan.gold = { amount: rollDice(5, 12), label: "5d12" };
+        plan.memory = {
+          mode: "single",
+          options: generateMemoryRewardOptions(ctx, 1),
+        };
+        plan.relic = {
+          mode: "single",
+          options: generateRelicRewardOptions(ctx, 1),
+        };
+        break;
+      }
+      case "boss": {
+        const dice = rollDice(7, 12);
+        plan.gold = { amount: dice + 15, label: "7d12 + 15" };
+        plan.memory = {
+          mode: "draft",
+          options: generateMemoryRewardOptions(ctx, 3),
+        };
+        plan.relic = {
+          mode: "draft",
+          options: generateRelicRewardOptions(ctx, 3),
+        };
+        break;
+      }
+      case "treasure": {
+        plan.gold = { amount: rollDice(5, 12), label: "5d12" };
+        plan.memory = {
+          mode: "draft",
+          options: generateMemoryRewardOptions(ctx, 3),
+        };
+        plan.relic = {
+          mode: "draft",
+          options: generateRelicRewardOptions(ctx, 3),
+        };
+        break;
+      }
+      case "combat":
+      default: {
+        plan.gold = { amount: rollDice(3, 12), label: "3d12" };
+        const memoryOptions = generateMemoryRewardOptions(ctx, 1);
+        const relicOptions = generateRelicRewardOptions(ctx, 1);
+        const offerMemoryFirst = Math.random() < 0.5;
+        if (offerMemoryFirst && memoryOptions.length > 0) {
+          plan.memory = { mode: "single", options: memoryOptions };
+        } else if (!offerMemoryFirst && relicOptions.length > 0) {
+          plan.relic = { mode: "single", options: relicOptions };
+        } else if (memoryOptions.length > 0) {
+          plan.memory = { mode: "single", options: memoryOptions };
+        } else if (relicOptions.length > 0) {
+          plan.relic = { mode: "single", options: relicOptions };
+        }
+        break;
+      }
+    }
+
+    return plan;
+  }
+
+  function buildRewardSection({
+    type,
+    plan,
+    ctx,
+    rewardState,
+    onClaim,
+  }) {
+    const section = createElement("section", "combat-rewards__section");
+    const mode = plan?.mode || "none";
+    const headingText =
+      plan?.heading ||
+      (type === "memory"
+        ? mode === "draft"
+          ? "Choose a Memory"
+          : "Memory Reward"
+        : mode === "draft"
+        ? "Choose a Relic"
+        : "Relic Reward");
+    const heading = createElement("h4", "combat-rewards__heading", headingText);
+    section.appendChild(heading);
+
+    const list = createElement("div", "combat-rewards__choices");
+    const options = Array.isArray(plan?.options) ? plan.options : [];
+    const claimedKey = type === "memory" ? "memoryClaimed" : "relicClaimed";
+    const buttonKey = type === "memory" ? "memoryButtons" : "relicButtons";
+    const noneText =
+      plan?.noneText ||
+      (type === "memory"
+        ? "No memory reward is offered."
+        : "No relic reward is offered.");
+    const emptyText =
+      plan?.emptyText ||
+      (type === "memory"
+        ? "No memories remain to claim."
+        : "No relics remain to claim.");
+
+    if (mode === "none") {
+      rewardState[claimedKey] = true;
+      list.appendChild(createElement("p", "combat-rewards__detail", noneText));
+    } else if (options.length === 0) {
+      rewardState[claimedKey] = true;
+      list.appendChild(createElement("p", "combat-rewards__detail", emptyText));
+    } else {
+      options.forEach((item) => {
+        const button = createElement(
+          "button",
+          `reward-option reward-option--${type}`
+        );
+        button.type = "button";
+        button.title = item.description || "";
+        if (type === "relic") {
+          const token = createRelicToken(item);
+          button.appendChild(token);
+        }
+        button.appendChild(
+          createElement("span", "reward-option__name", item.name)
+        );
+        if (item.description) {
+          button.appendChild(
+            createElement("span", "reward-option__detail", item.description)
+          );
+        }
+
+        button.addEventListener("click", () => {
+          if (button.classList.contains("is-selected")) {
+            return;
+          }
+          if (type === "memory") {
+            addMemoryToState(item.key, ctx);
+          } else {
+            addRelic(item.key, ctx);
+          }
+          button.classList.add("is-selected");
+          button.disabled = true;
+          rewardState[claimedKey] = true;
+          const collection = rewardState[buttonKey];
+          if (plan.mode === "draft") {
+            collection.forEach((btn) => {
+              if (btn !== button) {
+                btn.disabled = true;
+              }
+            });
+          }
+          ctx.updateResources?.();
+          if (typeof onClaim === "function") {
+            onClaim(type, item, rewardState);
+          }
+        });
+
+        rewardState[buttonKey].push(button);
+        list.appendChild(button);
+      });
+    }
+
+    section.appendChild(list);
+    return section;
+  }
+
+  function createRewardsPanel(ctx, config = {}) {
+    const {
+      encounterType = "combat",
+      plan: overridePlan = null,
+      continueButton = null,
+      titleText = "Rewards",
+      skipLabel = "Skip Remaining Rewards",
+      allowSkip = true,
+      onSkip,
+      onClaim,
+    } = config;
+
+    const rewardPlan = overridePlan || buildRewardPlan(ctx, encounterType);
+    const panel = createElement("div", "combat-rewards");
+    const title = createElement("h3", "combat-rewards__title", titleText);
+    panel.appendChild(title);
+
+    const rewardState = {
+      presented: true,
+      encounterType,
+      panel,
+      continueButton,
+      memoryButtons: [],
+      relicButtons: [],
+      memoryMode: rewardPlan.memory?.mode || "none",
+      relicMode: rewardPlan.relic?.mode || "none",
+      memoryClaimed:
+        (rewardPlan.memory?.mode || "none") === "none" ||
+        (rewardPlan.memory?.options?.length || 0) === 0,
+      relicClaimed:
+        (rewardPlan.relic?.mode || "none") === "none" ||
+        (rewardPlan.relic?.options?.length || 0) === 0,
+    };
+
+    if (rewardPlan.gold && rewardPlan.gold.amount > 0) {
+      addGold(rewardPlan.gold.amount, ctx);
+      const breakdown = rewardPlan.gold.label
+        ? ` (${rewardPlan.gold.label})`
+        : "";
+      panel.appendChild(
+        createElement(
+          "p",
+          "combat-rewards__detail",
+          `+${rewardPlan.gold.amount} Gold${breakdown}`
+        )
+      );
+    }
+
+    const memorySection = buildRewardSection({
+      type: "memory",
+      plan: rewardPlan.memory,
+      ctx,
+      rewardState,
+      onClaim,
+    });
+    panel.appendChild(memorySection);
+
+    const relicSection = buildRewardSection({
+      type: "relic",
+      plan: rewardPlan.relic,
+      ctx,
+      rewardState,
+      onClaim,
+    });
+    panel.appendChild(relicSection);
+
+    if (allowSkip) {
+      const actions = createElement("div", "combat-rewards__actions");
+      const skipButton = createElement(
+        "button",
+        "button button--ghost combat-rewards__skip",
+        skipLabel
+      );
+      skipButton.type = "button";
+      skipButton.addEventListener("click", () => {
+        rewardState.memoryButtons.forEach((btn) => (btn.disabled = true));
+        rewardState.relicButtons.forEach((btn) => (btn.disabled = true));
+        rewardState.skipped = true;
+        panel.remove();
+        rewardState.panel = null;
+        if (typeof onSkip === "function") {
+          onSkip(rewardState);
+        }
+      });
+      rewardState.skipButton = skipButton;
+      actions.appendChild(skipButton);
+      panel.appendChild(actions);
+    }
+
+    rewardState.panel = panel;
+    return { panel, rewardState };
+  }
+
+  function createMerchantPanel(ctx, continueButton) {
+    const panel = createElement("div", "merchant-panel");
+    const description = createElement(
+      "p",
+      "merchant-panel__description",
+      "Spend 10 gold to draft a relic from the merchant's curated wares."
+    );
+    panel.appendChild(description);
+
+    const actions = createElement("div", "merchant-panel__actions");
+    const draftButton = createElement(
+      "button",
+      "button button--primary",
+      "Draft a Relic (10 Gold)"
+    );
+    actions.appendChild(draftButton);
+    panel.appendChild(actions);
+
+    const rewardHolder = createElement("div", "merchant-panel__rewards");
+    panel.appendChild(rewardHolder);
+
+    draftButton.addEventListener("click", () => {
+      const availableGold = ctx.state.playerGold || 0;
+      if (availableGold < 10) {
+        ctx.showToast("You need 10 gold to bargain for a relic.");
+        return;
+      }
+      const options = generateRelicRewardOptions(ctx, 3);
+      if (!options.length) {
+        ctx.showToast("The merchant has nothing more to offer.");
+        return;
+      }
+      addGold(-10, ctx);
+      rewardHolder.replaceChildren();
+      const { panel: rewardsPanel } = createRewardsPanel(ctx, {
+        encounterType: "merchant",
+        plan: {
+          gold: null,
+          memory: {
+            mode: "none",
+            options: [],
+            noneText: "The merchant keeps their memories to themselves.",
+          },
+          relic: {
+            mode: "draft",
+            options,
+            heading: "Draft a Relic",
+            emptyText: "The merchant's display stands empty.",
+          },
+        },
+        titleText: "Merchant's Offer",
+        skipLabel: "Leave the Offer",
+        allowSkip: true,
+        continueButton,
+      });
+      if (rewardsPanel) {
+        rewardHolder.appendChild(rewardsPanel);
+      }
+    });
+
+    return panel;
   }
 
   function updateRewardContinueButton(combat) {
-    if (!combat.rewardState || !combat.dom?.continueButton) {
+    if (!combat?.dom?.continueButton) {
       return;
     }
-    const requireBoth = combat.rewardState.mode === "takeBoth";
-    const complete = requireBoth
-      ? combat.rewardState.memoryClaimed && combat.rewardState.relicClaimed
-      : combat.rewardState.memoryClaimed || combat.rewardState.relicClaimed;
-    combat.dom.continueButton.disabled = !complete;
+    combat.dom.continueButton.disabled = false;
   }
 
   function presentCombatRewards(combat) {
-    if (!combat || combat.rewardState?.presented) {
+    if (!combat) {
+      return;
+    }
+    if (combat.rewardState?.presented) {
       updateRewardContinueButton(combat);
       return;
     }
     const ctx = combat.ctx;
     const encounterType = combat.encounterType || ctx?.state?.currentEncounterType || "combat";
-    const panel = createElement("div", "combat-rewards");
-    const title = createElement("h3", "combat-rewards__title", "Rewards");
-    panel.appendChild(title);
-
-    const goldReward = getGoldRewardAmount(encounterType);
-    if (goldReward > 0) {
-      addGold(goldReward, ctx);
-      const goldRow = createElement(
-        "p",
-        "combat-rewards__detail",
-        `+${goldReward} Gold`
-      );
-      panel.appendChild(goldRow);
-    }
-
-    const rewardState = {
-      presented: true,
-      mode: encounterType === "combat" ? "chooseOne" : "takeBoth",
-      memoryClaimed: false,
-      relicClaimed: false,
-    };
-
-    const memoryOptions = generateMemoryRewardOptions(
-      ctx,
-      encounterType === "boss" ? 3 : 2
-    );
-    const relicOptions = generateRelicRewardOptions(
-      ctx,
-      encounterType === "boss" ? 3 : 2
-    );
-
-    const memoryButtons = [];
-    const relicButtons = [];
-
-    const memorySection = createElement("section", "combat-rewards__section");
-    const memoryHeader = createElement(
-      "h4",
-      "combat-rewards__heading",
-      encounterType === "combat" ? "Memory Reward (optional)" : "Choose a Memory"
-    );
-    memorySection.appendChild(memoryHeader);
-    const memoryList = createElement("div", "combat-rewards__choices");
-    if (memoryOptions.length === 0) {
-      rewardState.memoryClaimed = true;
-      memoryList.appendChild(
-        createElement("p", "combat-rewards__detail", "No memories available.")
-      );
-    } else {
-      memoryOptions.forEach((memory) => {
-        const button = createElement("button", "reward-option reward-option--memory");
-        button.type = "button";
-        button.title = memory.description;
-        button.appendChild(
-          createElement("span", "reward-option__name", memory.name)
-        );
-        button.appendChild(
-          createElement("span", "reward-option__detail", memory.description)
-        );
-        button.addEventListener("click", () => {
-          if (rewardState.memoryClaimed) {
-            return;
-          }
-          addMemoryToState(memory.key, ctx);
-          button.classList.add("is-selected");
-          memoryButtons.forEach((btn) => (btn.disabled = true));
-          rewardState.memoryClaimed = true;
-          if (rewardState.mode === "chooseOne") {
-            relicButtons.forEach((btn) => (btn.disabled = true));
-            rewardState.relicClaimed = true;
-          }
-          updateRewardContinueButton(combat);
-          ctx.updateResources?.();
-        });
-        memoryButtons.push(button);
-        memoryList.appendChild(button);
-      });
-    }
-    memorySection.appendChild(memoryList);
-    panel.appendChild(memorySection);
-
-    const relicSection = createElement("section", "combat-rewards__section");
-    const relicHeader = createElement(
-      "h4",
-      "combat-rewards__heading",
-      encounterType === "combat" ? "Relic Reward (optional)" : "Choose a Relic"
-    );
-    relicSection.appendChild(relicHeader);
-    const relicList = createElement("div", "combat-rewards__choices");
-    if (relicOptions.length === 0) {
-      rewardState.relicClaimed = true;
-      relicList.appendChild(
-        createElement("p", "combat-rewards__detail", "No relics remain to claim.")
-      );
-    } else {
-      relicOptions.forEach((relic) => {
-        const button = createElement("button", "reward-option reward-option--relic");
-        button.type = "button";
-        button.title = relic.description;
-        const token = createRelicToken(relic);
-        button.appendChild(token);
-        button.appendChild(
-          createElement("span", "reward-option__name", relic.name)
-        );
-        button.appendChild(
-          createElement("span", "reward-option__detail", relic.description)
-        );
-        button.addEventListener("click", () => {
-          if (rewardState.relicClaimed) {
-            return;
-          }
-          addRelic(relic.key, ctx);
-          button.classList.add("is-selected");
-          relicButtons.forEach((btn) => (btn.disabled = true));
-          rewardState.relicClaimed = true;
-          if (rewardState.mode === "chooseOne") {
-            memoryButtons.forEach((btn) => (btn.disabled = true));
-            rewardState.memoryClaimed = true;
-          }
-          updateRewardContinueButton(combat);
-          ctx.updateResources?.();
-        });
-        relicButtons.push(button);
-        relicList.appendChild(button);
-      });
-    }
-    relicSection.appendChild(relicList);
-    panel.appendChild(relicSection);
-
-    if (encounterType !== "combat") {
-      const bonusConsumable = grantRandomConsumable(ctx);
-      if (bonusConsumable) {
-        panel.appendChild(
-          createElement(
-            "p",
-            "combat-rewards__detail",
-            `Bonus: ${bonusConsumable.name} added to your satchel.`
-          )
-        );
-      }
-    }
+    const { panel, rewardState } = createRewardsPanel(ctx, {
+      encounterType,
+      continueButton: combat.dom?.continueButton || null,
+      onSkip: () => {
+        if (combat.rewardState) {
+          combat.rewardState.skipped = true;
+        }
+        updateRewardContinueButton(combat);
+      },
+      onClaim: () => {
+        updateRewardContinueButton(combat);
+      },
+    });
 
     combat.rewardState = rewardState;
-    combat.rewardState.memoryButtons = memoryButtons;
-    combat.rewardState.relicButtons = relicButtons;
-
-    if (combat.dom?.footer) {
-      combat.dom.footer.insertBefore(panel, combat.dom.continueButton);
-    }
     combat.dom.rewards = panel;
+
+    const parent = combat.dom?.footer || combat.dom?.continueButton?.parentElement;
+    if (parent && panel) {
+      parent.insertBefore(panel, combat.dom.continueButton);
+    }
+
     updateRewardContinueButton(combat);
   }
 
