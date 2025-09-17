@@ -1427,9 +1427,9 @@
 
   const DEFAULT_PLAYER_STATS = {
     maxEssence: 12,
-    baseApRegen: 3,
+    baseApRegen: 6,
     baseCritChance: 5,
-    apCarryover: 6,
+    apCarryover: 12,
   };
 
   const ENEMY_DEFINITIONS = {
@@ -1838,7 +1838,7 @@
     draftPacks: [],
     selectedDrafts: [],
     resourceDisplays: {},
-    inventoryView: null,
+    codexView: null,
     activeCombat: null,
   };
 
@@ -1905,6 +1905,7 @@
   }
 
   function initializeRunState() {
+    closeCodexOverlay();
     state.roomPool = buildInitialRoomPool();
     state.roomHistory = [];
     state.currentRoomNumber = 0;
@@ -1921,12 +1922,12 @@
     state.shroudGuardCharges = 0;
     state.draftPacks = [];
     state.selectedDrafts = [];
-    state.inventoryView = null;
+    state.codexView = null;
     state.activeCombat = null;
   }
 
   function clearRunState() {
-    closeInventoryPanel();
+    closeCodexOverlay();
     state.roomPool = [];
     state.roomHistory = [];
     state.currentRoomNumber = 0;
@@ -1946,7 +1947,7 @@
     state.shroudGuardCharges = 0;
     state.draftPacks = [];
     state.selectedDrafts = [];
-    state.inventoryView = null;
+    state.codexView = null;
     state.activeCombat = null;
   }
 
@@ -2112,7 +2113,7 @@
         const bestiaryBtn = createElement(
           "button",
           "button menu__button",
-          "Beastiary"
+          "Bestiary"
         );
         bestiaryBtn.addEventListener("click", () => ctx.transitionTo("bestiary"));
 
@@ -2139,25 +2140,41 @@
       type: "menu",
       ariaLabel: "Wallpaper from inside Cebarti Manor, used for menus.",
       render(ctx) {
-        const wrapper = createElement("div", "screen screen--menu");
-        const panel = createElement("div", "panel panel--menu");
+        const wrapper = createElement("div", "screen screen--menu screen--bestiary");
+        const panel = createElement("div", "panel panel--codex");
 
-        const title = createElement("h2", "screen__title", "Beastiary");
+        const title = createElement("h2", "screen__title", "Bestiary");
         const subtitle = createElement(
           "p",
           "screen__subtitle",
-          "Catalog the manor's residents. Bestiary entries will unlock as development continues."
+          "Peruse every memory and relic documented within the manor's archives."
         );
 
+        const content = createElement(
+          "div",
+          "codex-panel__content codex-panel__content--screen"
+        );
+        const viewState = { selectedKey: null, selectedType: null };
+        renderCodexContent(content, {
+          layout: "screen",
+          viewState,
+          memoryKeys: MEMORY_DEFINITIONS.map((memory) => memory.key),
+          relicKeys: RELIC_DEFINITIONS.map((relic) => relic.key),
+          emptyMessage: "Entries will appear here as development continues.",
+        });
+
+        panel.append(title, subtitle, content);
+
+        const footer = createElement("div", "screen-footer");
         const backButton = createElement(
           "button",
           "button",
           "Back to Menu"
         );
         backButton.addEventListener("click", () => ctx.transitionTo("mainMenu"));
+        footer.appendChild(backButton);
 
-        panel.append(title, subtitle, backButton);
-        wrapper.append(panel);
+        wrapper.append(panel, footer);
         return wrapper;
       },
     },
@@ -2677,7 +2694,7 @@
         element.textContent = `Consumables ${consumableValue}`;
       });
     }
-    refreshInventoryPanel();
+    refreshCodexOverlay();
   }
 
   function createRelicToken(relic) {
@@ -2694,19 +2711,19 @@
     return token;
   }
 
-  function createInventoryButton(ctx) {
+  function createLedgerButton(ctx) {
     const button = createElement("button", "inventory-button");
     button.type = "button";
     button.setAttribute(
       "aria-label",
-      "View collected memories, relics, and consumables"
+      "Open the ledger of collected memories and relics"
     );
     const icon = createElement("span", "inventory-button__icon", "☍");
     icon.setAttribute("aria-hidden", "true");
     button.appendChild(icon);
     const label = createElement("span", "inventory-button__label", "Ledger");
     button.appendChild(label);
-    button.addEventListener("click", () => showInventoryPanel(ctx));
+    button.addEventListener("click", () => showLedger(ctx));
     return button;
   }
 
@@ -2730,183 +2747,422 @@
     resources.appendChild(consumables);
 
     tracker.appendChild(resources);
-    tracker.appendChild(createInventoryButton(ctx));
+    tracker.appendChild(createLedgerButton(ctx));
 
     updateResourceDisplays();
     return tracker;
   }
 
-  function closeInventoryPanel() {
-    if (!state.inventoryView) {
+  function slugifyEmotion(value) {
+    return (value || "mystery")
+      .toLowerCase()
+      .replace(/[^a-z]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function closeCodexOverlay() {
+    if (!state.codexView || state.codexView.mode !== "ledger") {
       return;
     }
-    const { overlay, handleKeydown } = state.inventoryView;
-    if (overlay && overlay.parentElement) {
+    const { overlay, handleKeydown } = state.codexView;
+    if (overlay?.parentElement) {
       overlay.parentElement.removeChild(overlay);
     }
     if (handleKeydown) {
       document.removeEventListener("keydown", handleKeydown);
     }
-    state.inventoryView = null;
+    state.codexView = null;
   }
 
-  function refreshInventoryPanel(ctxOverride) {
-    const view = state.inventoryView;
-    if (!view || !view.content) {
-      return;
-    }
-    const ctx = ctxOverride || view.ctx;
-    const content = view.content;
-    content.replaceChildren();
-
-    const summary = createElement(
-      "p",
-      "inventory-panel__summary",
-      `Essence ${Math.max(0, Math.round(state.playerEssence || 0))}/${Math.round(
-        state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence
-      )} • Gold ${state.playerGold || 0}`
-    );
-    content.appendChild(summary);
-
-    const memoriesSection = createElement("section", "inventory-section");
-    const memoriesTitle = createElement("h3", "inventory-section__title", "Memories");
-    const memoryList = createElement("ul", "inventory-list inventory-list--memories");
-    if (Array.isArray(state.playerMemories) && state.playerMemories.length > 0) {
-      state.playerMemories.forEach((key) => {
-        const memory = MEMORY_MAP.get(key);
-        const label = memory ? memory.name : key;
-        const item = createElement("li", "inventory-list__item", label);
-        item.title = memory?.description || label;
-        memoryList.appendChild(item);
-      });
-    } else {
-      memoryList.appendChild(
-        createElement("li", "inventory-list__item inventory-list__item--empty", "No memories collected yet.")
-      );
-    }
-    memoriesSection.append(memoriesTitle, memoryList);
-    content.appendChild(memoriesSection);
-
-    const relicSection = createElement("section", "inventory-section");
-    const relicTitle = createElement("h3", "inventory-section__title", "Relics");
-    const relicList = createElement("ul", "inventory-list inventory-list--relics");
-    if (Array.isArray(state.playerRelics) && state.playerRelics.length > 0) {
-      state.playerRelics.forEach((key) => {
-        const relic = RELIC_MAP.get(key);
-        const item = createElement("li", "inventory-list__item");
-        if (relic) {
-          const token = createRelicToken(relic);
-          token.title = relic.name;
-          item.appendChild(token);
-          const text = createElement(
-            "span",
-            "inventory-list__label",
-            `${relic.name} — ${relic.description}`
-          );
-          item.appendChild(text);
-        } else {
-          item.textContent = key;
+  function buildMemoryEntriesFromKeys(keys = []) {
+    const seen = new Set();
+    const entries = [];
+    keys.forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const memory = MEMORY_MAP.get(key);
+      if (!memory) {
+        return;
+      }
+      const contributions = Array.isArray(memory.contributions)
+        ? memory.contributions
+            .map((entry) => {
+              const action = ACTION_DEFINITIONS[entry.action];
+              if (!action) {
+                return null;
+              }
+              return {
+                key: entry.action,
+                name: action.name || entry.action,
+                description: action.description || "",
+                weight: Number(entry.weight) || 0,
+              };
+            })
+            .filter(Boolean)
+        : [];
+      const detailParagraphs = [memory.description];
+      if (memory.passive) {
+        const passiveText = formatPassiveDescription(memory.passive);
+        if (passiveText) {
+          detailParagraphs.push(passiveText);
         }
-        relicList.appendChild(item);
+      }
+      entries.push({
+        key: memory.key,
+        type: "memory",
+        name: memory.name,
+        emotion: memory.emotion || "",
+        emotionSlug: slugifyEmotion(memory.emotion),
+        summary: memory.description || "",
+        detailParagraphs: detailParagraphs.filter(Boolean),
+        contributions,
       });
-    } else {
-      relicList.appendChild(
-        createElement("li", "inventory-list__item inventory-list__item--empty", "No relics claimed." )
-      );
-    }
-    relicSection.append(relicTitle, relicList);
-    content.appendChild(relicSection);
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
 
-    const consumableSection = createElement("section", "inventory-section");
-    const consumableTitle = createElement(
-      "h3",
-      "inventory-section__title",
-      "Consumables"
-    );
-    const consumableList = createElement(
-      "ul",
-      "inventory-list inventory-list--consumables"
-    );
+  function buildRelicEntriesFromKeys(keys = []) {
+    const seen = new Set();
+    const entries = [];
+    keys.forEach((key) => {
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      const relic = RELIC_MAP.get(key);
+      if (!relic) {
+        return;
+      }
+      const paragraphs = [relic.description];
+      if (relic.passive) {
+        const passiveText = formatPassiveDescription(relic.passive);
+        if (passiveText && passiveText !== relic.description) {
+          paragraphs.push(passiveText);
+        }
+      }
+      entries.push({
+        key: relic.key,
+        type: "relic",
+        name: relic.name,
+        emotion: relic.emotion || "",
+        emotionSlug: slugifyEmotion(relic.emotion),
+        summary: relic.description || "",
+        detailParagraphs: paragraphs.filter(Boolean),
+      });
+    });
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function createConsumablesSection(ctx) {
+    const section = createElement("section", "codex-consumables");
+    const title = createElement("h3", "codex-consumables__title", "Consumables");
+    section.appendChild(title);
+
     const entries = Object.entries(state.playerConsumables || {}).filter(
       ([, count]) => Number(count) > 0
     );
-    if (entries.length > 0) {
-      entries.forEach(([key, count]) => {
-        const consumable = CONSUMABLE_MAP.get(key);
-        const item = createElement("li", "inventory-list__item inventory-list__item--consumable");
-        const label = createElement(
-          "span",
-          "inventory-list__label",
-          consumable ? `${consumable.name} (x${count})` : `${key} (x${count})`
-        );
-        if (consumable?.description) {
-          label.title = consumable.description;
-        }
-        item.appendChild(label);
-        if (consumable) {
-          const useButton = createElement(
-            "button",
-            "button button--ghost inventory-list__action",
-            "Use"
-          );
-          useButton.type = "button";
-          useButton.addEventListener("click", () => {
-            useConsumable(ctx || { state }, key);
-          });
-          item.appendChild(useButton);
-        }
-        consumableList.appendChild(item);
-      });
-    } else {
-      consumableList.appendChild(
+
+    if (entries.length === 0) {
+      section.appendChild(
         createElement(
-          "li",
-          "inventory-list__item inventory-list__item--empty",
+          "p",
+          "codex-consumables__empty",
           "No consumables in your satchel."
         )
       );
+      return section;
     }
-    consumableSection.append(consumableTitle, consumableList);
-    content.appendChild(consumableSection);
+
+    const list = createElement("ul", "codex-consumables__list");
+    entries.forEach(([key, count]) => {
+      const consumable = CONSUMABLE_MAP.get(key);
+      const item = createElement("li", "codex-consumables__item");
+      const label = createElement(
+        "span",
+        "codex-consumables__label",
+        consumable ? `${consumable.name} (x${count})` : `${key} (x${count})`
+      );
+      if (consumable?.description) {
+        label.title = consumable.description;
+      }
+      item.appendChild(label);
+      if (consumable) {
+        const useButton = createElement(
+          "button",
+          "button button--ghost codex-consumables__action",
+          "Use"
+        );
+        useButton.type = "button";
+        useButton.addEventListener("click", () => {
+          useConsumable(ctx || { state }, key);
+        });
+        item.appendChild(useButton);
+      }
+      list.appendChild(item);
+    });
+    section.appendChild(list);
+    return section;
   }
 
-  function showInventoryPanel(ctx) {
-    if (state.inventoryView) {
-      refreshInventoryPanel(ctx);
+  function renderCodexContent(target, options) {
+    const {
+      memoryKeys = [],
+      relicKeys = [],
+      layout = "overlay",
+      viewState = {},
+      emptyMessage = "No entries recorded yet.",
+    } = options || {};
+
+    const memoryEntries = buildMemoryEntriesFromKeys(memoryKeys);
+    const relicEntries = buildRelicEntriesFromKeys(relicKeys);
+    const allEntries = [...memoryEntries, ...relicEntries];
+
+    target.replaceChildren();
+
+    const codex = createElement("div", `codex codex--${layout}`);
+    const sections = createElement("div", "codex__sections");
+
+    const detail = createElement("div", "codex-detail");
+
+    const iconButtons = [];
+
+    function updateDetail(entry) {
+      detail.replaceChildren();
+      if (!entry) {
+        detail.appendChild(
+          createElement("p", "codex-detail__empty", emptyMessage)
+        );
+        return;
+      }
+
+      viewState.selectedKey = entry.key;
+      viewState.selectedType = entry.type;
+
+      iconButtons.forEach((button) => {
+        if (
+          button.dataset.entryKey === entry.key &&
+          button.dataset.entryType === entry.type
+        ) {
+          button.classList.add("is-selected");
+        } else {
+          button.classList.remove("is-selected");
+        }
+      });
+
+      const icon = createElement(
+        "div",
+        `codex-detail__icon codex-detail__icon--${entry.type} ${
+          entry.emotionSlug ? `codex-detail__icon--${entry.emotionSlug}` : ""
+        }`
+      );
+      icon.textContent = entry.name.charAt(0).toUpperCase();
+      detail.appendChild(icon);
+
+      const name = createElement("h3", "codex-detail__name", entry.name);
+      detail.appendChild(name);
+
+      if (entry.emotion) {
+        detail.appendChild(
+          createElement(
+            "p",
+            "codex-detail__meta",
+            `${entry.type === "memory" ? "Memory" : "Relic"} • ${
+              entry.emotion
+            }`
+          )
+        );
+      }
+
+      entry.detailParagraphs
+        .filter((text) => typeof text === "string" && text.trim().length > 0)
+        .forEach((text) => {
+          detail.appendChild(
+            createElement("p", "codex-detail__description", text)
+          );
+        });
+
+      if (entry.contributions && entry.contributions.length > 0) {
+        detail.appendChild(
+          createElement("h4", "codex-detail__subtitle", "Action Contributions")
+        );
+        const list = createElement("ul", "codex-detail__list");
+        entry.contributions.forEach((contribution) => {
+          const weight = contribution.weight;
+          const formattedWeight = Number.isFinite(weight)
+            ? weight % 1 === 0
+              ? String(weight)
+              : weight.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
+            : "";
+          const label = formattedWeight
+            ? `${contribution.name} (weight ${formattedWeight})`
+            : contribution.name;
+          const item = createElement("li", "codex-detail__list-item", label);
+          if (contribution.description) {
+            item.title = contribution.description;
+          }
+          list.appendChild(item);
+        });
+        detail.appendChild(list);
+      }
+    }
+
+    function createSection(entries, type, emptyText) {
+      const section = createElement(
+        "section",
+        `codex-section codex-section--${type}`
+      );
+      const title = createElement(
+        "h3",
+        "codex-section__title",
+        type === "memory" ? "Memories" : "Relics"
+      );
+      section.appendChild(title);
+
+      const iconRow = createElement("div", "codex-section__icons");
+      if (entries.length === 0) {
+        iconRow.appendChild(
+          createElement("p", "codex-section__empty", emptyText)
+        );
+      } else {
+        entries.forEach((entry) => {
+          const button = createElement(
+            "button",
+            `codex-icon codex-icon--${type} ${
+              entry.emotionSlug ? `codex-icon--${entry.emotionSlug}` : ""
+            }`
+          );
+          button.type = "button";
+          button.dataset.entryKey = entry.key;
+          button.dataset.entryType = entry.type;
+          button.title = `${entry.name} — ${entry.summary}`;
+          button.textContent = entry.name.charAt(0).toUpperCase();
+          button.addEventListener("click", () => updateDetail(entry));
+          iconButtons.push(button);
+          iconRow.appendChild(button);
+        });
+      }
+      section.appendChild(iconRow);
+      return section;
+    }
+
+    sections.appendChild(
+      createSection(
+        memoryEntries,
+        "memory",
+        "No memories recorded in this ledger."
+      )
+    );
+    sections.appendChild(
+      createSection(relicEntries, "relic", "No relics recorded in this ledger.")
+    );
+
+    codex.append(sections, detail);
+    target.appendChild(codex);
+
+    let selectedEntry = null;
+    if (viewState.selectedKey && viewState.selectedType) {
+      selectedEntry = allEntries.find(
+        (entry) =>
+          entry.key === viewState.selectedKey &&
+          entry.type === viewState.selectedType
+      );
+    }
+    if (!selectedEntry) {
+      selectedEntry = allEntries[0] || null;
+    }
+    updateDetail(selectedEntry);
+  }
+
+  function refreshCodexOverlay(ctxOverride) {
+    const view = state.codexView;
+    if (!view || view.mode !== "ledger") {
       return;
     }
-    const overlay = createElement("div", "inventory-overlay");
-    const panel = createElement("div", "inventory-panel");
+    const ctx = ctxOverride || view.ctx || { state };
+    const memoryKeys = Array.isArray(ctx.state?.playerMemories)
+      ? ctx.state.playerMemories
+      : state.playerMemories || [];
+    const relicKeys = Array.isArray(ctx.state?.playerRelics)
+      ? ctx.state.playerRelics
+      : state.playerRelics || [];
+
+    view.content.replaceChildren();
+    const codexContainer = createElement("div");
+    renderCodexContent(codexContainer, {
+      layout: "overlay",
+      viewState: view,
+      memoryKeys,
+      relicKeys,
+      emptyMessage: "No memories or relics have been recorded yet.",
+    });
+    view.content.appendChild(codexContainer);
+
+    const consumablesSection = createConsumablesSection(ctx);
+    if (consumablesSection) {
+      view.content.appendChild(consumablesSection);
+    }
+  }
+
+  function showLedger(ctx) {
+    if (state.codexView && state.codexView.mode === "ledger") {
+      refreshCodexOverlay(ctx);
+      return;
+    }
+
+    const previousSelection = state.codexView
+      ? {
+          key: state.codexView.selectedKey || null,
+          type: state.codexView.selectedType || null,
+        }
+      : { key: null, type: null };
+
+    closeCodexOverlay();
+
+    const overlay = createElement("div", "codex-overlay");
+    const panel = createElement("div", "codex-panel");
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "true");
 
-    const header = createElement("div", "inventory-panel__header");
-    const title = createElement("h2", "inventory-panel__title", "Memory Ledger");
-    const closeButton = createElement("button", "inventory-panel__close", "Close");
+    const header = createElement("div", "codex-panel__header");
+    const title = createElement("h2", "codex-panel__title", "Memory Ledger");
+    const closeButton = createElement("button", "codex-panel__close", "Close");
     closeButton.type = "button";
-    closeButton.addEventListener("click", () => closeInventoryPanel());
+    closeButton.addEventListener("click", () => closeCodexOverlay());
     header.append(title, closeButton);
 
-    const content = createElement("div", "inventory-panel__content");
+    const content = createElement("div", "codex-panel__content");
     panel.append(header, content);
     overlay.append(panel);
 
     const handleKeydown = (event) => {
       if (event.key === "Escape") {
-        closeInventoryPanel();
+        closeCodexOverlay();
       }
     };
 
     overlay.addEventListener("click", (event) => {
       if (event.target === overlay) {
-        closeInventoryPanel();
+        closeCodexOverlay();
       }
     });
     document.addEventListener("keydown", handleKeydown);
 
     document.body.appendChild(overlay);
-    state.inventoryView = { overlay, panel, content, ctx, handleKeydown };
-    refreshInventoryPanel(ctx);
+
+    state.codexView = {
+      mode: "ledger",
+      overlay,
+      panel,
+      content,
+      ctx,
+      handleKeydown,
+      selectedKey: previousSelection.key,
+      selectedType: previousSelection.type,
+    };
+
+    refreshCodexOverlay(ctx);
     window.requestAnimationFrame(() => closeButton.focus());
   }
 
@@ -3671,6 +3927,13 @@
       }
       memory.contributions.forEach((entry) => {
         if (!entry || !entry.action) {
+          return;
+        }
+        const definition = ACTION_DEFINITIONS[entry.action];
+        if (!definition) {
+          return;
+        }
+        if (definition.chain && definition.chain.index > 0) {
           return;
         }
         const weight = Number(entry.weight) || 0;
