@@ -1422,6 +1422,14 @@
       icon: "☽",
       effect: { type: "grantShroudGuard" },
     },
+    {
+      key: "consumablePotionLingering",
+      name: "Potion of Lingering",
+      description:
+        "Permanently increase your maximum Essence by 5 and restore to full.",
+      icon: "✶",
+      effect: { type: "increaseMaxEssence", amount: 5 },
+    },
   ];
 
   const CONSUMABLE_MAP = new Map(
@@ -1429,6 +1437,8 @@
   );
 
   const MAX_CONSUMABLE_SLOTS = 3;
+  const MERCHANT_BASE_DRAFT_COST = 10;
+  const MERCHANT_DRAFT_COST_INCREMENT = 5;
 
   const DEFAULT_PLAYER_STATS = {
     maxEssence: 12,
@@ -1846,6 +1856,8 @@
     codexView: null,
     activeCombat: null,
     activeScreenContext: null,
+    merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
+    roomRewardsClaimed: {},
   };
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
@@ -1880,8 +1892,9 @@
       key: "recovery",
       label: "Recovery",
       colorClass: "door-button--verdant",
-      ariaDescription: "Recover resources and gather your strength.",
-      detail: "Recover your strength.",
+      ariaDescription:
+        "Replenish and permanently fortify your essence in a restorative chamber.",
+      detail: "Claim lasting essence and mend completely.",
     },
     {
       key: "treasure",
@@ -1931,6 +1944,8 @@
     state.codexView = null;
     state.activeCombat = null;
     state.activeScreenContext = null;
+    state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
+    state.roomRewardsClaimed = {};
   }
 
   function clearRunState() {
@@ -1957,6 +1972,8 @@
     state.codexView = null;
     state.activeCombat = null;
     state.activeScreenContext = null;
+    state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
+    state.roomRewardsClaimed = {};
   }
 
   function shuffle(array) {
@@ -2469,6 +2486,25 @@
         footer.appendChild(continueButton);
 
         wrapper.append(encounterScene.scene, prompt);
+
+        if (encounterType === "recovery") {
+          const recoveryResult = applyRecoveryRoomBenefits(ctx, roomData.key);
+          const detailText = recoveryResult
+            ? `You absorb the chamber's lingering calm. Maximum Essence increases by ${recoveryResult.essenceIncrease} and your essence is fully restored.`
+            : "The chamber's restorative energies have already been spent.";
+          wrapper.appendChild(
+            createElement("p", "combat-rewards__detail", detailText)
+          );
+          if (recoveryResult) {
+            ctx.showToast(
+              `Your essence deepens by ${recoveryResult.essenceIncrease}.`
+            );
+          } else {
+            ctx.showToast("You feel as renewed as this chamber allows.");
+          }
+          wrapper.appendChild(footer);
+          return wrapper;
+        }
 
         if (encounterType === "treasure") {
           const { panel: rewardsPanel } = createRewardsPanel(ctx, {
@@ -3285,19 +3321,21 @@
 
   function addConsumable(key, count = 1, ctx) {
     if (!key || count === 0) {
-      return;
+      return false;
     }
     state.playerConsumables = state.playerConsumables || {};
     const currentTotal = getTotalConsumables();
+    let success = false;
     if (count > 0) {
       const remainingSlots = MAX_CONSUMABLE_SLOTS - currentTotal;
       if (remainingSlots <= 0) {
         ctx?.showToast?.("Your satchel is full.");
-        return;
+        return false;
       }
       const amountToAdd = Math.min(count, remainingSlots);
       state.playerConsumables[key] =
         (state.playerConsumables[key] || 0) + amountToAdd;
+      success = amountToAdd > 0;
       if (ctx?.showToast) {
         const item = CONSUMABLE_MAP.get(key);
         if (item) {
@@ -3314,13 +3352,15 @@
       if (state.playerConsumables[key] <= 0) {
         delete state.playerConsumables[key];
       }
+      success = true;
     }
     updateResourceDisplays(ctx);
+    return success;
   }
 
   function addRelic(key, ctx) {
     if (!key) {
-      return;
+      return false;
     }
     state.playerRelics = Array.isArray(state.playerRelics)
       ? state.playerRelics
@@ -3331,15 +3371,18 @@
         const relic = RELIC_MAP.get(key);
         ctx.showToast(`You claim the relic: ${relic?.name || key}.`);
       }
-    } else if (ctx?.showToast) {
+      updateResourceDisplays(ctx);
+      return true;
+    }
+    if (ctx?.showToast) {
       ctx.showToast("You already carry that relic.");
     }
-    updateResourceDisplays(ctx);
+    return false;
   }
 
   function addMemoryToState(key, ctx) {
     if (!key) {
-      return;
+      return false;
     }
     state.playerMemories = Array.isArray(state.playerMemories)
       ? state.playerMemories
@@ -3349,6 +3392,8 @@
       const memory = MEMORY_MAP.get(key);
       ctx.showToast(`A new memory surfaces: ${memory?.name || key}.`);
     }
+    updateResourceDisplays(ctx);
+    return true;
   }
 
   function useConsumable(ctx, key) {
@@ -3388,6 +3433,18 @@
       case "grantShroudGuard": {
         state.shroudGuardCharges = (state.shroudGuardCharges || 0) + 1;
         message = "A protective shroud gathers around you.";
+        break;
+      }
+      case "increaseMaxEssence": {
+        const amount = Number(effect.amount) || 0;
+        if (amount > 0) {
+          const previousMax =
+            state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence;
+          const newMax = previousMax + amount;
+          state.playerMaxEssence = newMax;
+          state.playerEssence = newMax;
+          message = `Your essence lingers, increasing permanently by ${amount}.`;
+        }
         break;
       }
       default: {
@@ -3788,6 +3845,8 @@
         return name
           ? `You trade hushed words with ${name}, bartering for forbidden goods.`
           : "A spectral merchant beckons you toward a clandestine bargain.";
+      case "recovery":
+        return "A stillness settles here, inviting your essence to linger and mend.";
       default:
         return "You secure what you can from the chamber before returning to the corridor.";
     }
@@ -4813,6 +4872,63 @@
     return sampleWithoutReplacement(fallback, count);
   }
 
+  function generateConsumableRewardOptions(ctx, count) {
+    const pool = CONSUMABLE_DEFINITIONS.map((item) => ({ ...item }));
+    return sampleWithoutReplacement(pool, count);
+  }
+
+  function generateMerchantDraftOptions(ctx, count) {
+    const ownedMemories = new Set(ctx.state.playerMemories || []);
+    const ownedRelics = new Set(ctx.state.playerRelics || []);
+    const memoryCandidates = MEMORY_DEFINITIONS.filter(
+      (memory) => !ownedMemories.has(memory.key)
+    ).map((memory) => ({ ...memory, rewardType: "memory" }));
+    const relicCandidates = RELIC_DEFINITIONS.filter(
+      (relic) => !ownedRelics.has(relic.key)
+    ).map((relic) => ({ ...relic, rewardType: "relic" }));
+    const memoryPool =
+      memoryCandidates.length >= count
+        ? memoryCandidates
+        : MEMORY_DEFINITIONS.map((memory) => ({
+            ...memory,
+            rewardType: "memory",
+          }));
+    const relicPool =
+      relicCandidates.length >= count
+        ? relicCandidates
+        : RELIC_DEFINITIONS.map((relic) => ({
+            ...relic,
+            rewardType: "relic",
+          }));
+    const consumablePool = CONSUMABLE_DEFINITIONS.map((item) => ({
+      ...item,
+      rewardType: "consumable",
+    }));
+    const combinedPool = [...memoryPool, ...relicPool, ...consumablePool];
+    return sampleWithoutReplacement(combinedPool, count);
+  }
+
+  function applyRecoveryRoomBenefits(ctx, roomKey) {
+    if (!ctx?.state) {
+      return null;
+    }
+    ctx.state.roomRewardsClaimed = ctx.state.roomRewardsClaimed || {};
+    if (roomKey && ctx.state.roomRewardsClaimed[roomKey]) {
+      return null;
+    }
+    const increase = 5;
+    const previousMax =
+      ctx.state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence;
+    const newMax = previousMax + increase;
+    ctx.state.playerMaxEssence = newMax;
+    ctx.state.playerEssence = newMax;
+    if (roomKey) {
+      ctx.state.roomRewardsClaimed[roomKey] = true;
+    }
+    ctx.updateResources?.();
+    return { essenceIncrease: increase };
+  }
+
   function rollDice(count, sides) {
     let total = 0;
     const dieCount = Math.max(0, Math.floor(Number(count) || 0));
@@ -4828,6 +4944,7 @@
       gold: null,
       memory: { mode: "none", options: [] },
       relic: { mode: "none", options: [] },
+      consumable: { mode: "none", options: [], hideWhenNone: true },
     };
 
     switch (encounterType) {
@@ -4854,18 +4971,70 @@
           mode: "draft",
           options: generateRelicRewardOptions(ctx, 3),
         };
+        plan.consumable = {
+          mode: "draft",
+          options: generateConsumableRewardOptions(ctx, 3),
+          heading: "Draft a Consumable",
+          emptyText: "No consumables remain to claim.",
+          hideWhenNone: false,
+        };
         break;
       }
       case "treasure": {
-        plan.gold = { amount: rollDice(5, 12), label: "5d12" };
-        plan.memory = {
-          mode: "draft",
-          options: generateMemoryRewardOptions(ctx, 3),
-        };
-        plan.relic = {
-          mode: "draft",
-          options: generateRelicRewardOptions(ctx, 3),
-        };
+        const categories = sampleWithoutReplacement(
+          ["gold", "memory", "relic", "consumable"],
+          3
+        );
+        plan.gold = [];
+        plan.memory = { mode: "none", options: [], hideWhenNone: true };
+        plan.relic = { mode: "none", options: [], hideWhenNone: true };
+        plan.consumable = { mode: "none", options: [], hideWhenNone: true };
+        categories.forEach((category) => {
+          switch (category) {
+            case "gold": {
+              const goldAmount = rollDice(6, 12) + 20;
+              plan.gold.push({
+                amount: goldAmount,
+                label: "6d12 + 20",
+                description: "Large stash of gold",
+              });
+              break;
+            }
+            case "memory": {
+              plan.memory = {
+                mode: "draft",
+                options: generateMemoryRewardOptions(ctx, 3),
+                heading: "Draft a Memory",
+                hideWhenNone: false,
+              };
+              break;
+            }
+            case "relic": {
+              plan.relic = {
+                mode: "draft",
+                options: generateRelicRewardOptions(ctx, 3),
+                heading: "Draft a Relic",
+                hideWhenNone: false,
+              };
+              break;
+            }
+            case "consumable": {
+              plan.consumable = {
+                mode: "draft",
+                options: generateConsumableRewardOptions(ctx, 3),
+                heading: "Draft a Consumable",
+                emptyText: "No consumables remain to claim.",
+                hideWhenNone: false,
+              };
+              break;
+            }
+            default:
+              break;
+          }
+        });
+        if (Array.isArray(plan.gold) && plan.gold.length === 0) {
+          plan.gold = null;
+        }
         break;
       }
       case "combat":
@@ -4890,6 +5059,86 @@
     return plan;
   }
 
+  const REWARD_TYPE_CONFIG = {
+    memory: {
+      label: "Memory",
+      headings: { single: "Memory Reward", draft: "Choose a Memory" },
+      noneText: "No memory reward is offered.",
+      emptyText: "No memories remain to claim.",
+      applyReward: (item, ctx) => addMemoryToState(item.key, ctx),
+    },
+    relic: {
+      label: "Relic",
+      headings: { single: "Relic Reward", draft: "Choose a Relic" },
+      noneText: "No relic reward is offered.",
+      emptyText: "No relics remain to claim.",
+      applyReward: (item, ctx) => addRelic(item.key, ctx),
+    },
+    consumable: {
+      label: "Consumable",
+      headings: {
+        single: "Consumable Reward",
+        draft: "Choose a Consumable",
+      },
+      noneText: "No consumable reward is offered.",
+      emptyText: "No consumables remain to claim.",
+      applyReward: (item, ctx) => addConsumable(item.key, 1, ctx),
+    },
+    mixed: {
+      label: "Boon",
+      headings: { draft: "Draft a Boon" },
+      noneText: "No draft is currently available.",
+      emptyText: "No options remain to claim.",
+      applyReward: (item, ctx) => {
+        switch (item.rewardType) {
+          case "memory":
+            return addMemoryToState(item.key, ctx);
+          case "relic":
+            return addRelic(item.key, ctx);
+          case "consumable":
+            return addConsumable(item.key, 1, ctx);
+          default:
+            return false;
+        }
+      },
+    },
+  };
+
+  function formatRewardTypeLabel(type) {
+    switch (type) {
+      case "memory":
+        return "Memory";
+      case "relic":
+        return "Relic";
+      case "consumable":
+        return "Consumable";
+      case "mixed":
+        return "Boon";
+      default:
+        if (!type) {
+          return "";
+        }
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+  }
+
+  function formatRewardOptionName(type, item) {
+    const baseName = item.name || item.key || "Unknown Reward";
+    const isConsumableOption =
+      type === "consumable" || item.rewardType === "consumable";
+    const iconText =
+      isConsumableOption && (item.icon || baseName.charAt(0).toUpperCase());
+    let name = baseName;
+    if (iconText && !baseName.startsWith(`${iconText} `)) {
+      name = `${iconText} ${baseName}`;
+    }
+    if (type === "mixed" && item.rewardType) {
+      const label = formatRewardTypeLabel(item.rewardType);
+      return label ? `${name} (${label})` : name;
+    }
+    return name;
+  }
+
   function buildRewardSection({
     type,
     plan,
@@ -4897,77 +5146,93 @@
     rewardState,
     onClaim,
   }) {
-    const section = createElement("section", "combat-rewards__section");
-    const mode = plan?.mode || "none";
+    if (!plan) {
+      return null;
+    }
+    const mode = plan.mode || "none";
+    const options = Array.isArray(plan.options) ? plan.options : [];
+    const config = REWARD_TYPE_CONFIG[type] || REWARD_TYPE_CONFIG.mixed;
+    const typeState =
+      rewardState.types[type] ||
+      (rewardState.types[type] = {
+        buttons: [],
+        mode,
+        hideWhenNone: !!plan.hideWhenNone,
+        claimed:
+          mode === "none" ||
+          (options.length === 0 && !(plan.hideWhenNone && mode === "none")),
+      });
+    typeState.mode = mode;
+    typeState.hideWhenNone = !!plan.hideWhenNone;
+    typeState.buttons = [];
+
+    if (mode === "none" && typeState.hideWhenNone) {
+      typeState.claimed = true;
+      return null;
+    }
+
+    const fallbackLabel = config.label || formatRewardTypeLabel(type);
     const headingText =
-      plan?.heading ||
-      (type === "memory"
-        ? mode === "draft"
-          ? "Choose a Memory"
-          : "Memory Reward"
-        : mode === "draft"
-        ? "Choose a Relic"
-        : "Relic Reward");
+      plan.heading ||
+      (config.headings && (config.headings[mode] || config.headings.default)) ||
+      (mode === "draft"
+        ? `Choose a ${fallbackLabel}`
+        : `${fallbackLabel} Reward`);
+
+    const section = createElement("section", "combat-rewards__section");
     const heading = createElement("h4", "combat-rewards__heading", headingText);
     section.appendChild(heading);
 
     const list = createElement("div", "combat-rewards__choices");
-    const options = Array.isArray(plan?.options) ? plan.options : [];
-    const claimedKey = type === "memory" ? "memoryClaimed" : "relicClaimed";
-    const buttonKey = type === "memory" ? "memoryButtons" : "relicButtons";
     const noneText =
-      plan?.noneText ||
-      (type === "memory"
-        ? "No memory reward is offered."
-        : "No relic reward is offered.");
+      plan.noneText || config.noneText || "No reward is offered.";
     const emptyText =
-      plan?.emptyText ||
-      (type === "memory"
-        ? "No memories remain to claim."
-        : "No relics remain to claim.");
+      plan.emptyText || config.emptyText || "No rewards remain to claim.";
 
     if (mode === "none") {
-      rewardState[claimedKey] = true;
+      typeState.claimed = true;
       list.appendChild(createElement("p", "combat-rewards__detail", noneText));
     } else if (options.length === 0) {
-      rewardState[claimedKey] = true;
+      typeState.claimed = true;
       list.appendChild(createElement("p", "combat-rewards__detail", emptyText));
     } else {
       options.forEach((item) => {
-        const button = createElement(
-          "button",
-          `reward-option reward-option--${type}`
-        );
+        const button = createElement("button", "reward-option");
         button.type = "button";
-        button.title = item.description || "";
-        if (type === "relic") {
-          const token = createRelicToken(item);
-          button.appendChild(token);
+        button.classList.add(`reward-option--${type}`);
+        if (type === "mixed" && item.rewardType) {
+          button.classList.add(`reward-option--${item.rewardType}`);
         }
+        const displayName = formatRewardOptionName(type, item);
         button.appendChild(
-          createElement("span", "reward-option__name", item.name)
+          createElement("span", "reward-option__name", displayName)
         );
         if (item.description) {
           button.appendChild(
             createElement("span", "reward-option__detail", item.description)
           );
+          button.title = item.description;
+        } else {
+          button.title = displayName;
         }
 
         button.addEventListener("click", () => {
           if (button.classList.contains("is-selected")) {
             return;
           }
-          if (type === "memory") {
-            addMemoryToState(item.key, ctx);
-          } else {
-            addRelic(item.key, ctx);
+          const applyReward = config.applyReward;
+          const success =
+            typeof applyReward === "function"
+              ? applyReward(item, ctx, plan)
+              : false;
+          if (!success) {
+            return;
           }
           button.classList.add("is-selected");
           button.disabled = true;
-          rewardState[claimedKey] = true;
-          const collection = rewardState[buttonKey];
+          typeState.claimed = true;
           if (plan.mode === "draft") {
-            collection.forEach((btn) => {
+            typeState.buttons.forEach((btn) => {
               if (btn !== button) {
                 btn.disabled = true;
               }
@@ -4979,7 +5244,7 @@
           }
         });
 
-        rewardState[buttonKey].push(button);
+        typeState.buttons.push(button);
         list.appendChild(button);
       });
     }
@@ -5010,49 +5275,49 @@
       encounterType,
       panel,
       continueButton,
-      memoryButtons: [],
-      relicButtons: [],
-      memoryMode: rewardPlan.memory?.mode || "none",
-      relicMode: rewardPlan.relic?.mode || "none",
-      memoryClaimed:
-        (rewardPlan.memory?.mode || "none") === "none" ||
-        (rewardPlan.memory?.options?.length || 0) === 0,
-      relicClaimed:
-        (rewardPlan.relic?.mode || "none") === "none" ||
-        (rewardPlan.relic?.options?.length || 0) === 0,
+      types: {},
     };
 
-    if (rewardPlan.gold && rewardPlan.gold.amount > 0) {
-      addGold(rewardPlan.gold.amount, ctx);
-      const breakdown = rewardPlan.gold.label
-        ? ` (${rewardPlan.gold.label})`
-        : "";
+    const goldRewards = Array.isArray(rewardPlan.gold)
+      ? rewardPlan.gold
+      : rewardPlan.gold
+      ? [rewardPlan.gold]
+      : [];
+    goldRewards.forEach((entry) => {
+      const amount = Math.max(0, Math.round(Number(entry.amount) || 0));
+      if (amount <= 0) {
+        return;
+      }
+      addGold(amount, ctx);
+      const breakdown = entry.label ? ` (${entry.label})` : "";
+      const parts = [`+${amount} Gold${breakdown}`];
+      if (entry.description) {
+        parts.push(entry.description);
+      }
       panel.appendChild(
-        createElement(
-          "p",
-          "combat-rewards__detail",
-          `+${rewardPlan.gold.amount} Gold${breakdown}`
-        )
+        createElement("p", "combat-rewards__detail", parts.join(" – "))
       );
-    }
-
-    const memorySection = buildRewardSection({
-      type: "memory",
-      plan: rewardPlan.memory,
-      ctx,
-      rewardState,
-      onClaim,
     });
-    panel.appendChild(memorySection);
 
-    const relicSection = buildRewardSection({
-      type: "relic",
-      plan: rewardPlan.relic,
-      ctx,
-      rewardState,
-      onClaim,
+    const sectionOrder = [
+      { type: "memory", plan: rewardPlan.memory },
+      { type: "relic", plan: rewardPlan.relic },
+      { type: "consumable", plan: rewardPlan.consumable },
+      { type: "mixed", plan: rewardPlan.mixed },
+    ];
+
+    sectionOrder.forEach(({ type, plan: sectionPlan }) => {
+      const section = buildRewardSection({
+        type,
+        plan: sectionPlan,
+        ctx,
+        rewardState,
+        onClaim,
+      });
+      if (section) {
+        panel.appendChild(section);
+      }
     });
-    panel.appendChild(relicSection);
 
     if (allowSkip) {
       const actions = createElement("div", "combat-rewards__actions");
@@ -5063,8 +5328,11 @@
       );
       skipButton.type = "button";
       skipButton.addEventListener("click", () => {
-        rewardState.memoryButtons.forEach((btn) => (btn.disabled = true));
-        rewardState.relicButtons.forEach((btn) => (btn.disabled = true));
+        Object.values(rewardState.types).forEach((typeState) => {
+          typeState.buttons.forEach((btn) => {
+            btn.disabled = true;
+          });
+        });
         rewardState.skipped = true;
         panel.remove();
         rewardState.panel = null;
@@ -5086,49 +5354,56 @@
     const description = createElement(
       "p",
       "merchant-panel__description",
-      "Spend 10 gold to draft a relic from the merchant's curated wares."
+      "Spend gold to draft from the merchant's curated memories, relics, and curios. Each bargain costs a little more than the last."
     );
     panel.appendChild(description);
 
     const actions = createElement("div", "merchant-panel__actions");
-    const draftButton = createElement(
-      "button",
-      "button button--primary",
-      "Draft a Relic (10 Gold)"
-    );
+    const draftButton = createElement("button", "button button--primary");
     actions.appendChild(draftButton);
     panel.appendChild(actions);
 
     const rewardHolder = createElement("div", "merchant-panel__rewards");
     panel.appendChild(rewardHolder);
 
+    const updateDraftButtonLabel = () => {
+      const cost = ctx.state.merchantDraftCost || MERCHANT_BASE_DRAFT_COST;
+      draftButton.textContent = `Draft a Boon (${cost} Gold)`;
+    };
+
+    updateDraftButtonLabel();
+
     draftButton.addEventListener("click", () => {
+      const cost = ctx.state.merchantDraftCost || MERCHANT_BASE_DRAFT_COST;
       const availableGold = ctx.state.playerGold || 0;
-      if (availableGold < 10) {
-        ctx.showToast("You need 10 gold to bargain for a relic.");
+      if (availableGold < cost) {
+        ctx.showToast(`You need ${cost} gold to bargain for a draft.`);
         return;
       }
-      const options = generateRelicRewardOptions(ctx, 3);
+      const options = generateMerchantDraftOptions(ctx, 3);
       if (!options.length) {
         ctx.showToast("The merchant has nothing more to offer.");
         return;
       }
-      addGold(-10, ctx);
+      addGold(-cost, ctx);
+      ctx.state.merchantDraftCost =
+        cost + MERCHANT_DRAFT_COST_INCREMENT;
+      updateDraftButtonLabel();
       rewardHolder.replaceChildren();
       const { panel: rewardsPanel } = createRewardsPanel(ctx, {
         encounterType: "merchant",
         plan: {
           gold: null,
-          memory: {
-            mode: "none",
-            options: [],
-            noneText: "The merchant keeps their memories to themselves.",
-          },
-          relic: {
+          memory: { mode: "none", options: [], hideWhenNone: true },
+          relic: { mode: "none", options: [], hideWhenNone: true },
+          consumable: { mode: "none", options: [], hideWhenNone: true },
+          mixed: {
             mode: "draft",
             options,
-            heading: "Draft a Relic",
+            heading: "Draft a Boon",
+            noneText: "The merchant has no boons to trade.",
             emptyText: "The merchant's display stands empty.",
+            hideWhenNone: false,
           },
         },
         titleText: "Merchant's Offer",
@@ -5186,6 +5461,29 @@
     updateRewardContinueButton(combat);
   }
 
+  function attemptCombatConsumableDrop(combat, chancePercent) {
+    if (!combat?.ctx || !combat.ctx.state) {
+      return;
+    }
+    const chance = Math.max(0, Number(chancePercent) || 0);
+    if (chance < 100 && Math.random() * 100 >= chance) {
+      return;
+    }
+    const reward = getRandomItem(CONSUMABLE_DEFINITIONS);
+    if (!reward) {
+      return;
+    }
+    const added = addConsumable(reward.key, 1, combat.ctx);
+    if (added) {
+      logCombat(combat, `You recover a ${reward.name} from the encounter.`);
+    } else {
+      logCombat(
+        combat,
+        `You glimpse a ${reward.name}, but your satchel cannot hold more.`
+      );
+    }
+  }
+
   function handleVictory(combat) {
     if (combat.status !== "inProgress") {
       return;
@@ -5193,9 +5491,18 @@
     combat.status = "victory";
     logCombat(combat, `${combat.enemy.name} collapses. You are victorious!`);
     if (combat.ctx?.state) {
+      const encounterType =
+        combat.encounterType ||
+        combat.ctx.state.currentEncounterType ||
+        "combat";
       combat.ctx.state.playerEssence = Math.max(0, Math.round(combat.player.essence));
       combat.ctx.state.playerMaxEssence = combat.player.maxEssence;
       combat.ctx.updateResources?.();
+      if (encounterType === "elite") {
+        attemptCombatConsumableDrop(combat, 100);
+      } else if (encounterType === "combat") {
+        attemptCombatConsumableDrop(combat, 50);
+      }
       if (combat.player.flags?.greedsGamblePlayed) {
         const reward = getRandomItem(CONSUMABLE_DEFINITIONS);
         if (reward) {
