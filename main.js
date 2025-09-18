@@ -92,6 +92,61 @@
     },
   ];
 
+  const BESTIARY_PAGES = [
+    {
+      key: "memoriesActions",
+      title: "Memories & Actions",
+      sections: [
+        {
+          type: "memory",
+          emptyText: "No memories recorded in this ledger.",
+        },
+        {
+          type: "action",
+          emptyText: "No actions documented yet.",
+        },
+      ],
+    },
+    {
+      key: "relicsConsumables",
+      title: "Relics & Consumables",
+      sections: [
+        {
+          type: "relic",
+          emptyText: "No relics recorded in this ledger.",
+        },
+        {
+          type: "consumable",
+          emptyText: "No consumables catalogued.",
+        },
+      ],
+    },
+    {
+      key: "enemiesBosses",
+      title: "Enemies & Bosses",
+      sections: [
+        {
+          type: "enemy",
+          emptyText: "No enemies have been catalogued.",
+        },
+        {
+          type: "boss",
+          emptyText: "No bosses have been recorded.",
+        },
+      ],
+    },
+    {
+      key: "playerGhosts",
+      title: "Player Ghosts",
+      sections: [
+        {
+          type: "playerGhost",
+          emptyText: "No player apparitions have manifested.",
+        },
+      ],
+    },
+  ];
+
   const DOOR_SPRITES = {
     base: "objspr_doors_door.png",
     lock: "objspr_doors_lock.png",
@@ -1879,6 +1934,7 @@
     selectedDrafts: [],
     resourceDisplays: {},
     codexView: null,
+    codexSelections: {},
     activeCombat: null,
     activeScreenContext: null,
     merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
@@ -1975,6 +2031,7 @@
     state.draftPacks = [];
     state.selectedDrafts = [];
     state.codexView = null;
+    state.codexSelections = {};
     state.activeCombat = null;
     state.activeScreenContext = null;
     state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
@@ -2004,6 +2061,7 @@
     state.draftPacks = [];
     state.selectedDrafts = [];
     state.codexView = null;
+    state.codexSelections = {};
     state.activeCombat = null;
     state.activeScreenContext = null;
     state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
@@ -2177,7 +2235,7 @@
           "button menu__button",
           "Bestiary"
         );
-        bestiaryBtn.addEventListener("click", () => ctx.transitionTo("bestiary"));
+        bestiaryBtn.addEventListener("click", () => showBestiary(ctx));
 
         const settingsBtn = createElement(
           "button",
@@ -2188,115 +2246,12 @@
 
         const exitBtn = createElement("button", "button menu__button", "Exit");
         exitBtn.addEventListener("click", () => {
-          ctx.showToast("Exit will be available in the desktop build.");
+          ctx.exitGame();
         });
 
         menu.append(continueBtn, newRunBtn, bestiaryBtn, settingsBtn, exitBtn);
         panel.append(title, subtitle, menu);
         wrapper.append(panel);
-        return wrapper;
-      },
-    },
-    bestiary: {
-      key: "bestiary",
-      type: "menu",
-      ariaLabel: "Wallpaper from inside Cebarti Manor, used for menus.",
-      render(ctx) {
-        const wrapper = createElement("div", "screen screen--menu screen--bestiary");
-        const panel = createElement("div", "panel panel--codex");
-
-        const title = createElement("h2", "screen__title", "Bestiary");
-        const subtitle = createElement(
-          "p",
-          "screen__subtitle",
-          "Peruse the manor's memories, actions, relics, and denizens."
-        );
-
-        const content = createElement(
-          "div",
-          "codex-panel__content codex-panel__content--screen"
-        );
-        const viewState = { selectedKey: null, selectedType: null, pageIndex: 0 };
-        const bestiaryPages = [
-          {
-            key: "memoriesActions",
-            title: "Memories & Actions",
-            sections: [
-              {
-                type: "memory",
-                emptyText: "No memories recorded in this ledger.",
-              },
-              {
-                type: "action",
-                emptyText: "No actions documented yet.",
-              },
-            ],
-          },
-          {
-            key: "relicsConsumables",
-            title: "Relics & Consumables",
-            sections: [
-              {
-                type: "relic",
-                emptyText: "No relics recorded in this ledger.",
-              },
-              {
-                type: "consumable",
-                emptyText: "No consumables catalogued.",
-              },
-            ],
-          },
-          {
-            key: "enemiesBosses",
-            title: "Enemies & Bosses",
-            sections: [
-              {
-                type: "enemy",
-                emptyText: "No enemies have been catalogued.",
-              },
-              {
-                type: "boss",
-                emptyText: "No bosses have been recorded.",
-              },
-            ],
-          },
-          {
-            key: "playerGhosts",
-            title: "Player Ghosts",
-            sections: [
-              {
-                type: "playerGhost",
-                emptyText: "No player apparitions have manifested.",
-              },
-            ],
-          },
-        ];
-        renderCodexContent(content, {
-          layout: "screen",
-          viewState,
-          memoryKeys: MEMORY_DEFINITIONS.map((memory) => memory.key),
-          actionKeys: Object.keys(ACTION_DEFINITIONS || {}),
-          relicKeys: RELIC_DEFINITIONS.map((relic) => relic.key),
-          consumableKeys: CONSUMABLE_DEFINITIONS.map((item) => item.key),
-          enemyKeys: enemySprites.map((sprite) => sprite.key),
-          bossKeys: bossSprites.map((sprite) => sprite.key),
-          playerGhostKeys: [playerCharacter.key],
-          pages: bestiaryPages,
-          emptyMessage: "Entries will appear here as development continues.",
-        });
-
-        panel.append(title, subtitle, content);
-
-        const footer = createElement("div", "screen-footer");
-        const backButton = createElement(
-          "button",
-          "button",
-          "Back to Menu"
-        );
-        backButton.addEventListener("click", () => ctx.transitionTo("mainMenu"));
-        footer.appendChild(backButton);
-
-        wrapper.append(panel, footer);
         return wrapper;
       },
     },
@@ -2567,9 +2522,8 @@
           });
         }
 
-        let footer = null;
+        const footer = createElement("div", "screen-footer");
         if (roomsRemaining > 0) {
-          footer = createElement("div", "screen-footer");
           const continueButton = createElement(
             "button",
             "button button--primary",
@@ -2584,10 +2538,27 @@
           footer.appendChild(continueButton);
         }
 
-        wrapper.append(tracker, title, subtitle, doorMap);
-        if (footer) {
-          wrapper.appendChild(footer);
-        }
+        const returnButton = createElement(
+          "button",
+          "button",
+          "Return to Main Menu"
+        );
+        returnButton.addEventListener("click", async () => {
+          const confirmReturn = window.confirm(
+            "Abandon this run and return to the main menu?"
+          );
+          if (!confirmReturn) {
+            return;
+          }
+          clearRunState();
+          await ctx.transitionTo("mainMenu");
+          ctx.showToast(
+            "You withdraw from the corridor and return to the manor's entry hall."
+          );
+        });
+        footer.appendChild(returnButton);
+
+        wrapper.append(tracker, title, subtitle, doorMap, footer);
         return wrapper;
       },
     },
@@ -2847,9 +2818,14 @@
     const frame = createElement("span", "door-button__frame");
     button.appendChild(frame);
 
-    const sprite = createElement("span", "door-button__sprite");
+    const sprite = document.createElement("img");
+    sprite.className = "door-button__sprite";
+    sprite.src = DOOR_SPRITES.base;
+    sprite.alt = "";
+    sprite.loading = "lazy";
+    sprite.decoding = "async";
+    sprite.draggable = false;
     sprite.setAttribute("aria-hidden", "true");
-    sprite.style.backgroundImage = `url(${DOOR_SPRITES.base})`;
     frame.appendChild(sprite);
 
     const shine = createElement("span", "door-button__shine");
@@ -3105,15 +3081,24 @@
   }
 
   function closeCodexOverlay() {
-    if (!state.codexView || state.codexView.mode !== "ledger") {
+    if (!state.codexView) {
       return;
     }
-    const { overlay, handleKeydown } = state.codexView;
+    const { overlay, handleKeydown, mode } = state.codexView;
     if (overlay?.parentElement) {
       overlay.parentElement.removeChild(overlay);
     }
     if (handleKeydown) {
       document.removeEventListener("keydown", handleKeydown);
+    }
+    state.codexSelections = state.codexSelections || {};
+    const selection = {
+      key: state.codexView.selectedKey || null,
+      type: state.codexView.selectedType || null,
+      pageIndex: state.codexView.pageIndex || 0,
+    };
+    if (mode) {
+      state.codexSelections[mode] = selection;
     }
     state.codexView = null;
   }
@@ -3972,46 +3957,30 @@
 
   function refreshCodexOverlay(ctxOverride) {
     const view = state.codexView;
-    if (!view || view.mode !== "ledger") {
+    if (!view || typeof view.renderContent !== "function") {
       return;
     }
     const ctx = ctxOverride || view.ctx || { state };
-    const memoryKeys = Array.isArray(ctx.state?.playerMemories)
-      ? ctx.state.playerMemories
-      : state.playerMemories || [];
-    const relicKeys = Array.isArray(ctx.state?.playerRelics)
-      ? ctx.state.playerRelics
-      : state.playerRelics || [];
-
-    view.content.replaceChildren();
-    const codexContainer = createElement("div");
-    renderCodexContent(codexContainer, {
-      layout: "overlay",
-      viewState: view,
-      memoryKeys,
-      relicKeys,
-      emptyMessage: "No memories or relics have been recorded yet.",
-    });
-    view.content.appendChild(codexContainer);
-
-    const consumablesSection = createConsumablesSection(ctx);
-    if (consumablesSection) {
-      view.content.appendChild(consumablesSection);
+    view.ctx = ctx;
+    if (!view.content) {
+      return;
     }
+    view.content.replaceChildren();
+    view.renderContent(view.content, ctx, view);
   }
 
-  function showLedger(ctx) {
-    if (state.codexView && state.codexView.mode === "ledger") {
+  function openCodexOverlay(mode, titleText, ctx, renderContent) {
+    if (state.codexView && state.codexView.mode === mode) {
+      state.codexView.ctx = ctx || state.codexView.ctx;
       refreshCodexOverlay(ctx);
       return;
     }
 
-    const previousSelection = state.codexView
-      ? {
-          key: state.codexView.selectedKey || null,
-          type: state.codexView.selectedType || null,
-        }
-      : { key: null, type: null };
+    const storedSelection = state.codexSelections?.[mode] || {
+      key: null,
+      type: null,
+      pageIndex: 0,
+    };
 
     closeCodexOverlay();
 
@@ -4021,7 +3990,7 @@
     panel.setAttribute("aria-modal", "true");
 
     const header = createElement("div", "codex-panel__header");
-    const title = createElement("h2", "codex-panel__title", "Memory Ledger");
+    const title = createElement("h2", "codex-panel__title", titleText);
     const closeButton = createElement("button", "codex-panel__close", "Close");
     closeButton.type = "button";
     closeButton.addEventListener("click", () => closeCodexOverlay());
@@ -4047,18 +4016,78 @@
     document.body.appendChild(overlay);
 
     state.codexView = {
-      mode: "ledger",
+      mode,
       overlay,
       panel,
       content,
       ctx,
       handleKeydown,
-      selectedKey: previousSelection.key,
-      selectedType: previousSelection.type,
+      selectedKey: storedSelection.key,
+      selectedType: storedSelection.type,
+      pageIndex: storedSelection.pageIndex || 0,
+      renderContent,
     };
 
     refreshCodexOverlay(ctx);
     window.requestAnimationFrame(() => closeButton.focus());
+  }
+
+  function showLedger(ctx) {
+    openCodexOverlay("ledger", "Memory Ledger", ctx, (target, renderCtx, viewState) => {
+      const memoryKeys = Array.isArray(renderCtx.state?.playerMemories)
+        ? renderCtx.state.playerMemories
+        : state.playerMemories || [];
+      const relicKeys = Array.isArray(renderCtx.state?.playerRelics)
+        ? renderCtx.state.playerRelics
+        : state.playerRelics || [];
+
+      const codexContainer = createElement("div");
+      renderCodexContent(codexContainer, {
+        layout: "overlay",
+        viewState,
+        memoryKeys,
+        relicKeys,
+        emptyMessage: "No memories or relics have been recorded yet.",
+      });
+      target.appendChild(codexContainer);
+
+      const consumablesSection = createConsumablesSection(renderCtx);
+      if (consumablesSection) {
+        target.appendChild(consumablesSection);
+      }
+    });
+  }
+
+  function showBestiary(ctx) {
+    openCodexOverlay(
+      "bestiary",
+      "Manor Bestiary",
+      ctx,
+      (target, renderCtx, viewState) => {
+        const intro = createElement(
+          "p",
+          "codex-panel__intro",
+          "Review every discovered memory, relic, apparition, and foe recorded across all runs."
+        );
+        target.appendChild(intro);
+
+        const codexContainer = createElement("div");
+        renderCodexContent(codexContainer, {
+          layout: "overlay",
+          viewState,
+          memoryKeys: MEMORY_DEFINITIONS.map((memory) => memory.key),
+          actionKeys: Object.keys(ACTION_DEFINITIONS || {}),
+          relicKeys: RELIC_DEFINITIONS.map((relic) => relic.key),
+          consumableKeys: CONSUMABLE_DEFINITIONS.map((item) => item.key),
+          enemyKeys: enemySprites.map((sprite) => sprite.key),
+          bossKeys: bossSprites.map((sprite) => sprite.key),
+          playerGhostKeys: [playerCharacter.key],
+          pages: BESTIARY_PAGES,
+          emptyMessage: "Entries will appear here as development continues.",
+        });
+        target.appendChild(codexContainer);
+      }
+    );
   }
 
   function addGold(amount, ctx) {
@@ -7068,6 +7097,21 @@
     }, duration);
   }
 
+  function exitGame() {
+    closeCodexOverlay();
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.setTimeout(() => {
+      window.close();
+      try {
+        window.location.href = "about:blank";
+      } catch (error) {
+        // ignore navigation errors in non-browser environments
+      }
+    }, 50);
+  }
+
   function fadeToBlack() {
     return new Promise((resolve) => {
       if (!fadeOverlay) {
@@ -7148,6 +7192,7 @@
       showToast,
       options,
       updateResources: updateResourceDisplays,
+      exitGame,
     };
 
     state.activeScreenContext = context;

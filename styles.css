@@ -363,17 +363,14 @@ button {
 }
 
 .door-map {
-  width: min(820px, 92vw);
+  width: min(860px, 94vw);
   margin-inline: auto;
   padding: clamp(1.75rem, 4vw, 2.75rem);
-  display: grid;
-  grid-template-columns: repeat(
-    auto-fit,
-    minmax(clamp(160px, 24vw, 220px), 1fr)
-  );
-  gap: clamp(1.5rem, 3vw, 2.5rem);
-  align-items: start;
-  justify-items: center;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: clamp(1.5rem, 3vw, 3rem);
   background: rgba(10, 5, 2, 0.6);
   border: 1px solid rgba(214, 179, 112, 0.35);
   border-radius: 26px;
@@ -400,22 +397,33 @@ button {
   width: 100%;
   height: 100%;
   border-radius: 20px;
-  overflow: hidden;
-  background: rgba(8, 4, 2, 0.65);
+  overflow: visible;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 4, 2, 0.76),
+    rgba(8, 4, 2, 0.55) 60%,
+    rgba(6, 3, 1, 0.78)
+  );
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   transition: box-shadow 180ms ease, transform 180ms ease;
   transform: translateY(var(--door-raise, 0px));
+  padding: clamp(0.85rem, 2.4vw, 1.15rem)
+    clamp(0.7rem, 2.2vw, 1.05rem)
+    clamp(1.1rem, 3vw, 1.6rem);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
 .door-button__sprite {
-  position: absolute;
-  inset: 0;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: contain;
-  background-image: url("objspr_doors_door.png");
+  position: relative;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.65));
   transition: filter 180ms ease;
+  pointer-events: none;
+  user-select: none;
 }
 
 .door-button__shine {
@@ -429,27 +437,32 @@ button {
   opacity: 0;
   transition: opacity 200ms ease;
   pointer-events: none;
+  border-radius: 18px;
 }
 
 .door-button__icon {
   position: absolute;
-  top: 8%;
+  top: -18%;
   left: 50%;
   transform: translate(-50%, 0);
-  width: 58%;
+  width: 64%;
+  max-width: 132px;
   pointer-events: none;
   transition: filter 200ms ease, transform 200ms ease;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  z-index: 2;
 }
 
 .door-button__lock {
   position: absolute;
+  top: 50%;
   left: 50%;
-  bottom: 20%;
-  width: 32%;
-  transform: translate(-50%, 10%) scale(0.85);
+  width: 34%;
+  transform: translate(-50%, -36%) scale(0.85);
   opacity: 0;
   pointer-events: none;
   transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 3;
 }
 
 .door-button:focus-visible {
@@ -865,6 +878,13 @@ button {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+.codex-panel__intro {
+  margin: 0 0 clamp(1rem, 3vw, 1.5rem);
+  color: var(--color-muted);
+  line-height: 1.65;
+  font-size: clamp(0.95rem, 2vw, 1.05rem);
 }
 
 .codex-panel__content--screen {
@@ -1421,40 +1441,13 @@ button {
   align-self: flex-start;
 }
 
-.door-button--amber {
-  background: radial-gradient(circle at 30% 30%, #fff8c2, #bfa12c 68%, #6a5207 100%);
-}
-
-.door-button--azure {
-  background: radial-gradient(circle at 30% 30%, #f0f7ff, #3b74b8 70%, #15385d 100%);
-}
-
-.door-button--crimson {
-  background: radial-gradient(circle at 30% 30%, #ffe6e0, #b43a32 68%, #5a0909 100%);
-}
-
-.door-button--verdant {
-  background: radial-gradient(circle at 30% 30%, #e9fbe8, #4f9c55 70%, #1f5027 100%);
-}
-
-.door-button--violet {
-  background: radial-gradient(circle at 30% 30%, #f3e8ff, #7b52b7 70%, #33124f 100%);
-}
-
-.door-button--umbra {
-  background: radial-gradient(circle at 30% 30%, #f5ecff, #59468d 64%, #120825 100%);
-}
-
-.door-button--aether {
-  background: radial-gradient(circle at 30% 30%, #e8fbff, #3c8f9b 68%, #0a343d 100%);
-}
-
 .door-option {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  max-width: clamp(160px, 24vw, 220px);
+  flex: 0 1 clamp(180px, 22vw, 220px);
+  width: clamp(180px, 22vw, 220px);
   text-align: center;
 }
 
@@ -2000,13 +1993,13 @@ button {
 
 @media (max-width: 720px) {
   .door-map {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     padding: clamp(1.25rem, 5vw, 1.75rem);
     gap: clamp(1.25rem, 4vw, 2rem);
   }
 
   .door-option {
-    max-width: 220px;
+    flex: 1 1 clamp(160px, 48vw, 220px);
+    width: clamp(160px, 48vw, 220px);
   }
 
   .screen-footer .button {
