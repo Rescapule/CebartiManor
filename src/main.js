@@ -12,6 +12,25 @@ import {
   RELIC_DEFINITIONS,
   CONSUMABLE_DEFINITIONS,
 } from "./data/index.js";
+import {
+  adjustConsumableCount,
+  adjustGold,
+  awardRelic,
+  clearActiveCombat,
+  clearCodexView,
+  createState,
+  ensureCodexSelections,
+  ensurePlayerConsumables,
+  ensureResourceDisplays,
+  getState,
+  incrementShroudGuard,
+  recordMemory,
+  setActiveCombat,
+  setCodexView,
+  setEssenceValues,
+  toggleDevMode,
+  updateState,
+} from "./state/state.js";
 
 (function () {
 
@@ -1534,37 +1553,11 @@ import {
 
   const TOTAL_ROOMS_PER_RUN = roomDefinitions.length + 1;
 
-  const state = {
-    currentScreen: null,
-    hasSave: false,
-    inRun: false,
-    lastRunScreen: null,
-    corridorRefreshes: 0,
-    roomPool: [],
-    roomHistory: [],
-    currentRoomNumber: 0,
-    currentRoomKey: null,
-    currentEncounterType: null,
-    currentEncounter: null,
-    playerMemories: [],
-    playerRelics: [],
-    playerGold: 0,
-    playerConsumables: {},
+  const state = createState({
     playerEssence: DEFAULT_PLAYER_STATS.maxEssence,
     playerMaxEssence: DEFAULT_PLAYER_STATS.maxEssence,
-    shroudGuardCharges: 0,
-    draftPacks: [],
-    selectedDrafts: [],
-    resourceDisplays: {},
-    codexView: null,
-    codexSelections: {},
-    devMode: false,
-    activeCombat: null,
-    activeScreenContext: null,
     merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
-    roomRewardsClaimed: {},
-    currentRoomIsEnhanced: false,
-  };
+  });
 
   const ROOMS_BEFORE_BOSS = roomDefinitions.length;
   const roomMap = roomDefinitions.reduce((map, room) => {
@@ -1638,59 +1631,63 @@ import {
 
   function initializeRunState() {
     closeCodexOverlay();
-    state.roomPool = buildInitialRoomPool();
-    state.roomHistory = [];
-    state.currentRoomNumber = 0;
-    state.currentRoomKey = null;
-    state.corridorRefreshes = 0;
-    state.currentEncounterType = null;
-    state.currentEncounter = null;
-    state.playerMemories = [];
-    state.playerRelics = [];
-    state.playerGold = 0;
-    state.playerConsumables = {};
-    state.playerEssence = DEFAULT_PLAYER_STATS.maxEssence;
-    state.playerMaxEssence = DEFAULT_PLAYER_STATS.maxEssence;
-    state.shroudGuardCharges = 0;
-    state.draftPacks = [];
-    state.selectedDrafts = [];
-    state.codexView = null;
-    state.codexSelections = {};
-    state.activeCombat = null;
-    state.activeScreenContext = null;
-    state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
-    state.roomRewardsClaimed = {};
-    state.currentRoomIsEnhanced = false;
+    updateState({
+      roomPool: buildInitialRoomPool(),
+      roomHistory: [],
+      currentRoomNumber: 0,
+      currentRoomKey: null,
+      corridorRefreshes: 0,
+      currentEncounterType: null,
+      currentEncounter: null,
+      playerMemories: [],
+      playerRelics: [],
+      playerGold: 0,
+      playerConsumables: {},
+      playerEssence: DEFAULT_PLAYER_STATS.maxEssence,
+      playerMaxEssence: DEFAULT_PLAYER_STATS.maxEssence,
+      shroudGuardCharges: 0,
+      draftPacks: [],
+      selectedDrafts: [],
+      codexSelections: {},
+      activeScreenContext: null,
+      merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
+      roomRewardsClaimed: {},
+      currentRoomIsEnhanced: false,
+    });
+    clearCodexView();
+    clearActiveCombat();
   }
 
   function clearRunState() {
     closeCodexOverlay();
-    state.roomPool = [];
-    state.roomHistory = [];
-    state.currentRoomNumber = 0;
-    state.currentRoomKey = null;
-    state.corridorRefreshes = 0;
-    state.lastRunScreen = null;
-    state.hasSave = false;
-    state.inRun = false;
-    state.currentEncounterType = null;
-    state.currentEncounter = null;
-    state.playerMemories = [];
-    state.playerRelics = [];
-    state.playerGold = 0;
-    state.playerConsumables = {};
-    state.playerEssence = DEFAULT_PLAYER_STATS.maxEssence;
-    state.playerMaxEssence = DEFAULT_PLAYER_STATS.maxEssence;
-    state.shroudGuardCharges = 0;
-    state.draftPacks = [];
-    state.selectedDrafts = [];
-    state.codexView = null;
-    state.codexSelections = {};
-    state.activeCombat = null;
-    state.activeScreenContext = null;
-    state.merchantDraftCost = MERCHANT_BASE_DRAFT_COST;
-    state.roomRewardsClaimed = {};
-    state.currentRoomIsEnhanced = false;
+    updateState({
+      roomPool: [],
+      roomHistory: [],
+      currentRoomNumber: 0,
+      currentRoomKey: null,
+      corridorRefreshes: 0,
+      lastRunScreen: null,
+      hasSave: false,
+      inRun: false,
+      currentEncounterType: null,
+      currentEncounter: null,
+      playerMemories: [],
+      playerRelics: [],
+      playerGold: 0,
+      playerConsumables: {},
+      playerEssence: DEFAULT_PLAYER_STATS.maxEssence,
+      playerMaxEssence: DEFAULT_PLAYER_STATS.maxEssence,
+      shroudGuardCharges: 0,
+      draftPacks: [],
+      selectedDrafts: [],
+      codexSelections: {},
+      activeScreenContext: null,
+      merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
+      roomRewardsClaimed: {},
+      currentRoomIsEnhanced: false,
+    });
+    clearCodexView();
+    clearActiveCombat();
   }
 
   function shuffle(array) {
@@ -1722,20 +1719,27 @@ import {
       return;
     }
 
-    ctx.state.roomPool = ctx.state.roomPool.filter((key) => key !== roomKey);
-    if (ctx.state.roomHistory[ctx.state.roomHistory.length - 1] !== roomKey) {
-      ctx.state.roomHistory.push(roomKey);
+    const nextRoomPool = ctx.state.roomPool.filter((key) => key !== roomKey);
+    updateState({ roomPool: nextRoomPool });
+    let roomHistory = ctx.state.roomHistory.slice();
+    if (roomHistory[roomHistory.length - 1] !== roomKey) {
+      roomHistory = [...roomHistory, roomKey];
     }
-    ctx.state.currentRoomNumber = ctx.state.roomHistory.length;
-    ctx.state.currentRoomKey = roomKey;
-    ctx.state.lastRunScreen = "room";
-    ctx.state.corridorRefreshes = 0;
+    updateState({
+      roomHistory,
+      currentRoomNumber: roomHistory.length,
+      currentRoomKey: roomKey,
+      lastRunScreen: "room",
+      corridorRefreshes: 0,
+    });
 
     const encounterType = options.encounterType || null;
-    ctx.state.currentEncounterType = encounterType;
-    ctx.state.currentRoomIsEnhanced = !!options.enhanced;
+    updateState({
+      currentEncounterType: encounterType,
+      currentRoomIsEnhanced: !!options.enhanced,
+    });
     const encounter = getEncounterForType(encounterType);
-    ctx.state.currentEncounter = encounter;
+    updateState({ currentEncounter: encounter });
 
     await ctx.transitionTo("room", {
       room,
@@ -1748,19 +1752,25 @@ import {
   }
 
   async function goToFoyer(ctx) {
-    ctx.state.roomPool = [];
-    if (ctx.state.roomHistory[ctx.state.roomHistory.length - 1] !== foyerRoom.key) {
-      ctx.state.roomHistory.push(foyerRoom.key);
+    updateState({ roomPool: [] });
+    let roomHistory = ctx.state.roomHistory.slice();
+    if (roomHistory[roomHistory.length - 1] !== foyerRoom.key) {
+      roomHistory = [...roomHistory, foyerRoom.key];
     }
-    ctx.state.currentRoomNumber = ctx.state.roomHistory.length;
-    ctx.state.currentRoomKey = foyerRoom.key;
-    ctx.state.lastRunScreen = "foyer";
-    ctx.state.corridorRefreshes = 0;
+    updateState({
+      roomHistory,
+      currentRoomNumber: roomHistory.length,
+      currentRoomKey: foyerRoom.key,
+      lastRunScreen: "foyer",
+      corridorRefreshes: 0,
+    });
 
-    ctx.state.currentEncounterType = "boss";
-    ctx.state.currentRoomIsEnhanced = false;
+    updateState({
+      currentEncounterType: "boss",
+      currentRoomIsEnhanced: false,
+    });
     const encounter = getEncounterForType("boss");
-    ctx.state.currentEncounter = encounter;
+    updateState({ currentEncounter: encounter });
 
     await ctx.transitionTo("foyer", {
       encounterType: "boss",
@@ -1837,7 +1847,7 @@ import {
             ctx.showToast("No run to continue yet.");
             return;
           }
-          ctx.state.inRun = true;
+          updateState({ inRun: true });
           ctx.transitionTo(ctx.state.lastRunScreen);
         });
 
@@ -1848,9 +1858,7 @@ import {
         );
         newRunBtn.addEventListener("click", () => {
           initializeRunState();
-          ctx.state.inRun = true;
-          ctx.state.hasSave = false;
-          ctx.state.lastRunScreen = "well";
+          updateState({ inRun: true, hasSave: false, lastRunScreen: "well" });
           ctx.transitionTo("well");
         });
 
@@ -1914,8 +1922,7 @@ import {
       render(ctx) {
         const wrapper = createElement("div", "screen screen--well");
 
-        ctx.state.currentEncounterType = null;
-        ctx.state.currentEncounter = null;
+        updateState({ currentEncounterType: null, currentEncounter: null });
 
         const title = createElement("h2", "screen__title", "The Styx Well");
         const subtitle = createElement(
@@ -1940,8 +1947,7 @@ import {
             ctx.showToast("Choose one memory from each set to proceed.");
             return;
           }
-          ctx.state.corridorRefreshes = 0;
-          ctx.state.lastRunScreen = "corridor";
+          updateState({ corridorRefreshes: 0, lastRunScreen: "corridor" });
           await ctx.transitionTo("corridor");
           ctx.showToast("You ascend into the corridor.");
         });
@@ -1959,11 +1965,10 @@ import {
       checkpoint: true,
       render(ctx) {
         if (ctx.options && ctx.options.fromRoom) {
-          ctx.state.currentRoomKey = null;
+          updateState({ currentRoomKey: null });
         }
 
-        ctx.state.currentEncounterType = null;
-        ctx.state.currentEncounter = null;
+        updateState({ currentEncounterType: null, currentEncounter: null });
 
         const wrapper = createElement("div", "screen screen--corridor");
         const availableRooms = Array.isArray(ctx.state.roomPool)
@@ -2006,7 +2011,7 @@ import {
 
         const subtitle = createElement("p", "screen__subtitle", descriptionText);
 
-        ctx.state.currentRoomIsEnhanced = false;
+        updateState({ currentRoomIsEnhanced: false });
 
         const doorMap = createElement("div", "door-map");
         if (roomsRemaining === 0) {
@@ -2154,8 +2159,11 @@ import {
             "Continue Down the Corridor"
           );
           continueButton.addEventListener("click", async () => {
-            ctx.state.corridorRefreshes += 1;
-            ctx.state.lastRunScreen = "corridor";
+            const corridorRefreshes = (ctx.state.corridorRefreshes || 0) + 1;
+            updateState({
+              corridorRefreshes,
+              lastRunScreen: "corridor",
+            });
             await ctx.transitionTo("corridor", { refresh: true });
             ctx.showToast("The corridor rearranges itself.");
           });
@@ -2214,13 +2222,11 @@ import {
             "Return to the Corridor"
           );
           backButton.addEventListener("click", async () => {
-            ctx.state.currentRoomKey = null;
-            ctx.state.lastRunScreen = "corridor";
+            updateState({ currentRoomKey: null, lastRunScreen: "corridor" });
             await ctx.transitionTo("corridor", { refresh: true });
           });
           footer.appendChild(backButton);
-          ctx.state.currentEncounterType = null;
-          ctx.state.currentEncounter = null;
+          updateState({ currentEncounterType: null, currentEncounter: null });
           wrapper.append(tracker, title, subtitle, footer);
           return wrapper;
         }
@@ -2257,11 +2263,13 @@ import {
           "Return to the Corridor"
         );
         continueButton.addEventListener("click", async () => {
-          ctx.state.currentRoomKey = null;
-          ctx.state.lastRunScreen = "corridor";
-          ctx.state.corridorRefreshes = 0;
-          ctx.state.currentEncounterType = null;
-          ctx.state.currentEncounter = null;
+          updateState({
+            currentRoomKey: null,
+            lastRunScreen: "corridor",
+            corridorRefreshes: 0,
+            currentEncounterType: null,
+            currentEncounter: null,
+          });
           await ctx.transitionTo("corridor", { fromRoom: true });
           ctx.showToast("You slip back into the corridor.");
         });
@@ -2340,11 +2348,13 @@ import {
         );
         continueButton.addEventListener("click", async () => {
           continueButton.disabled = true;
-          ctx.state.hasSave = false;
-          ctx.state.lastRunScreen = null;
-          ctx.state.inRun = false;
-          ctx.state.currentEncounterType = null;
-          ctx.state.currentEncounter = null;
+          updateState({
+            hasSave: false,
+            lastRunScreen: null,
+            inRun: false,
+            currentEncounterType: null,
+            currentEncounter: null,
+          });
           await ctx.transitionTo("victory");
         });
         footer.appendChild(continueButton);
@@ -2511,29 +2521,30 @@ import {
   }
 
   function resetResourceDisplayRegistry() {
-    state.resourceDisplays = {
-      progress: [],
-      gold: [],
-      essence: [],
-      consumables: [],
-    };
+    updateState({
+      resourceDisplays: {
+        progress: [],
+        gold: [],
+        essence: [],
+        consumables: [],
+      },
+    });
   }
 
   function registerResourceDisplay(type, element) {
-    if (!state.resourceDisplays) {
-      resetResourceDisplayRegistry();
+    const registry = ensureResourceDisplays();
+    if (!registry[type]) {
+      registry[type] = [];
     }
-    if (!state.resourceDisplays[type]) {
-      state.resourceDisplays[type] = [];
-    }
-    state.resourceDisplays[type].push(element);
+    registry[type].push(element);
   }
 
   function getTotalConsumables() {
-    if (!state.playerConsumables) {
+    const consumables = ensurePlayerConsumables();
+    if (!consumables) {
       return 0;
     }
-    return Object.values(state.playerConsumables).reduce(
+    return Object.values(consumables).reduce(
       (sum, count) => sum + Number(count || 0),
       0
     );
@@ -2543,7 +2554,8 @@ import {
     if (!key) {
       return 0;
     }
-    return Number(state.playerConsumables?.[key] || 0);
+    const consumables = ensurePlayerConsumables();
+    return Number(consumables?.[key] || 0);
   }
 
   function spendConsumableCharge(key, ctx) {
@@ -2705,26 +2717,27 @@ import {
   }
 
   function closeCodexOverlay() {
-    if (!state.codexView) {
+    const codexView = state.codexView;
+    if (!codexView) {
       return;
     }
-    const { overlay, handleKeydown, mode } = state.codexView;
+    const { overlay, handleKeydown, mode } = codexView;
     if (overlay?.parentElement) {
       overlay.parentElement.removeChild(overlay);
     }
     if (handleKeydown) {
       document.removeEventListener("keydown", handleKeydown);
     }
-    state.codexSelections = state.codexSelections || {};
     const selection = {
-      key: state.codexView.selectedKey || null,
-      type: state.codexView.selectedType || null,
-      pageIndex: state.codexView.pageIndex || 0,
+      key: codexView.selectedKey || null,
+      type: codexView.selectedType || null,
+      pageIndex: codexView.pageIndex || 0,
     };
     if (mode) {
-      state.codexSelections[mode] = selection;
+      const selections = ensureCodexSelections();
+      selections[mode] = selection;
     }
-    state.codexView = null;
+    clearCodexView();
   }
 
   function getNestedValue(source, path = []) {
@@ -3997,7 +4010,11 @@ import {
 
   function openCodexOverlay(mode, titleText, ctx, renderContent) {
     if (state.codexView && state.codexView.mode === mode) {
-      state.codexView.ctx = ctx || state.codexView.ctx;
+      const nextView = {
+        ...state.codexView,
+        ctx: ctx || state.codexView.ctx,
+      };
+      setCodexView(nextView);
       refreshCodexOverlay(ctx);
       return;
     }
@@ -4036,8 +4053,8 @@ import {
       logo.className = "codex-dev-toggle__logo";
       devToggleButton.appendChild(logo);
       devToggleButton.addEventListener("click", () => {
-        state.devMode = !state.devMode;
-        updateDevModeUI(state.codexView);
+        toggleDevMode();
+        updateDevModeUI(getState().codexView);
         refreshCodexOverlay();
       });
       actions.appendChild(devToggleButton);
@@ -4065,7 +4082,7 @@ import {
 
     document.body.appendChild(overlay);
 
-    state.codexView = {
+    setCodexView({
       mode,
       overlay,
       panel,
@@ -4077,7 +4094,7 @@ import {
       pageIndex: storedSelection.pageIndex || 0,
       renderContent,
       devToggleButton,
-    };
+    });
 
     updateDevModeUI(state.codexView);
     refreshCodexOverlay(ctx);
@@ -4147,7 +4164,7 @@ import {
     if (value === 0) {
       return;
     }
-    state.playerGold = Math.max(0, (state.playerGold || 0) + value);
+    adjustGold(value);
     if (ctx?.showToast) {
       const text = value > 0 ? `You gain ${value} gold.` : `You spend ${Math.abs(value)} gold.`;
       ctx.showToast(text);
@@ -4159,7 +4176,7 @@ import {
     if (!key || count === 0) {
       return false;
     }
-    state.playerConsumables = state.playerConsumables || {};
+    ensurePlayerConsumables();
     const currentTotal = getTotalConsumables();
     let success = false;
     if (count > 0) {
@@ -4169,8 +4186,7 @@ import {
         return false;
       }
       const amountToAdd = Math.min(count, remainingSlots);
-      state.playerConsumables[key] =
-        (state.playerConsumables[key] || 0) + amountToAdd;
+      adjustConsumableCount(key, amountToAdd);
       success = amountToAdd > 0;
       if (ctx?.showToast) {
         const item = CONSUMABLE_MAP.get(key);
@@ -4183,11 +4199,7 @@ import {
         }
       }
     } else {
-      state.playerConsumables[key] =
-        (state.playerConsumables[key] || 0) + count;
-      if (state.playerConsumables[key] <= 0) {
-        delete state.playerConsumables[key];
-      }
+      adjustConsumableCount(key, count);
       success = true;
     }
     updateResourceDisplays(ctx);
@@ -4198,11 +4210,7 @@ import {
     if (!key) {
       return false;
     }
-    state.playerRelics = Array.isArray(state.playerRelics)
-      ? state.playerRelics
-      : [];
-    if (!state.playerRelics.includes(key)) {
-      state.playerRelics.push(key);
+    if (awardRelic(key)) {
       if (ctx?.showToast) {
         const relic = RELIC_MAP.get(key);
         ctx.showToast(`You claim the relic: ${relic?.name || key}.`);
@@ -4220,10 +4228,9 @@ import {
     if (!key) {
       return false;
     }
-    state.playerMemories = Array.isArray(state.playerMemories)
-      ? state.playerMemories
-      : [];
-    state.playerMemories.push(key);
+    if (!recordMemory(key)) {
+      return false;
+    }
     if (ctx?.showToast) {
       const memory = MEMORY_MAP.get(key);
       ctx.showToast(`A new memory surfaces: ${memory?.name || key}.`);
@@ -4233,7 +4240,7 @@ import {
   }
 
   function useConsumable(ctx, key) {
-    if (!key || !state.playerConsumables || !state.playerConsumables[key]) {
+    if (!key || !ensurePlayerConsumables()[key]) {
       ctx?.showToast?.("No charges of that consumable remain.");
       return;
     }
@@ -4250,11 +4257,10 @@ import {
         const amount = Number(effect.amount) || 0;
         if (amount > 0) {
           const before = state.playerEssence || 0;
-          state.playerEssence = Math.min(
-            state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence,
-            before + amount
-          );
-          gainedEssence = Math.max(0, Math.round(state.playerEssence - before));
+          const cappedMax = state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence;
+          const nextEssence = Math.min(cappedMax, before + amount);
+          setEssenceValues(nextEssence);
+          gainedEssence = Math.max(0, Math.round(nextEssence - before));
           message =
             gainedEssence > 0
               ? `You restore ${gainedEssence} Essence.`
@@ -4267,7 +4273,7 @@ import {
         break;
       }
       case "grantShroudGuard": {
-        state.shroudGuardCharges = (state.shroudGuardCharges || 0) + 1;
+        incrementShroudGuard();
         message = "A protective shroud gathers around you.";
         break;
       }
@@ -4277,8 +4283,7 @@ import {
           const previousMax =
             state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence;
           const newMax = previousMax + amount;
-          state.playerMaxEssence = newMax;
-          state.playerEssence = newMax;
+          setEssenceValues(newMax, newMax);
           message = `Your essence lingers, increasing permanently by ${amount}.`;
         }
         break;
@@ -4294,10 +4299,7 @@ import {
         break;
       }
     }
-    state.playerConsumables[key] -= 1;
-    if (state.playerConsumables[key] <= 0) {
-      delete state.playerConsumables[key];
-    }
+    adjustConsumableCount(key, -1);
     if (message && ctx?.showToast) {
       ctx.showToast(message);
     }
@@ -4324,12 +4326,16 @@ import {
   function ensureDraftState(ctx) {
     const packCount = 3;
     if (!Array.isArray(ctx.state.draftPacks) || ctx.state.draftPacks.length === 0) {
-      ctx.state.draftPacks = createMemoryDraftPacks(packCount, 3);
-      ctx.state.selectedDrafts = new Array(packCount).fill(null);
-      ctx.state.playerMemories = [];
+      updateState({
+        draftPacks: createMemoryDraftPacks(packCount, 3),
+        selectedDrafts: new Array(packCount).fill(null),
+        playerMemories: [],
+      });
     }
     if (!Array.isArray(ctx.state.selectedDrafts)) {
-      ctx.state.selectedDrafts = new Array(ctx.state.draftPacks.length).fill(null);
+      updateState({
+        selectedDrafts: new Array(ctx.state.draftPacks.length).fill(null),
+      });
     }
   }
 
@@ -4409,8 +4415,12 @@ import {
     }
 
     card.addEventListener("click", () => {
-      ctx.state.selectedDrafts[packIndex] = memory.key;
-      ctx.state.playerMemories = ctx.state.selectedDrafts.filter(Boolean);
+      const selectedDrafts = ctx.state.selectedDrafts.slice();
+      selectedDrafts[packIndex] = memory.key;
+      updateState({
+        selectedDrafts,
+        playerMemories: selectedDrafts.filter(Boolean),
+      });
       updateMemoryDraftSelection(ctx);
     });
 
@@ -4700,11 +4710,13 @@ import {
 
   function ensureDefaultMemories(ctx) {
     if (!Array.isArray(ctx.state.playerMemories) || ctx.state.playerMemories.length === 0) {
-      ctx.state.playerMemories = [
-        "memoryBarFight",
-        "memoryWatchman",
-        "memorySong",
-      ];
+      updateState({
+        playerMemories: [
+          "memoryBarFight",
+          "memoryWatchman",
+          "memorySong",
+        ],
+      });
     }
   }
 
@@ -5163,13 +5175,15 @@ import {
 
     continueButton.addEventListener("click", async () => {
       if (combat.status === "victory") {
-        ctx.state.currentEncounterType = null;
-        ctx.state.currentEncounter = null;
-        ctx.state.lastRunScreen = "corridor";
+        updateState({
+          currentEncounterType: null,
+          currentEncounter: null,
+          lastRunScreen: "corridor",
+        });
         await ctx.transitionTo("corridor", { fromRoom: true });
         ctx.showToast("You slip back into the corridor.");
       } else if (combat.status === "defeat") {
-        ctx.state.inRun = false;
+        updateState({ inRun: false });
         await ctx.transitionTo("mainMenu");
         ctx.showToast("Defeat drives you back to the manor's entry hall.");
       }
@@ -5196,7 +5210,7 @@ import {
       continueButton,
     };
 
-    state.activeCombat = combat;
+    setActiveCombat(combat);
     startCombat(combat);
     return { container, footer, combat };
   }
@@ -5769,19 +5783,21 @@ import {
     if (!ctx?.state) {
       return null;
     }
-    ctx.state.roomRewardsClaimed = ctx.state.roomRewardsClaimed || {};
-    if (roomKey && ctx.state.roomRewardsClaimed[roomKey]) {
+    const roomRewardsClaimed = {
+      ...(ctx.state.roomRewardsClaimed || {}),
+    };
+    if (roomKey && roomRewardsClaimed[roomKey]) {
       return null;
     }
     const increase = 5;
     const previousMax =
       ctx.state.playerMaxEssence || DEFAULT_PLAYER_STATS.maxEssence;
     const newMax = previousMax + increase;
-    ctx.state.playerMaxEssence = newMax;
-    ctx.state.playerEssence = newMax;
+    setEssenceValues(newMax, newMax);
     if (roomKey) {
-      ctx.state.roomRewardsClaimed[roomKey] = true;
+      roomRewardsClaimed[roomKey] = true;
     }
+    updateState({ roomRewardsClaimed });
     ctx.updateResources?.();
     return { essenceIncrease: increase };
   }
@@ -6387,8 +6403,7 @@ import {
         return;
       }
       addGold(-cost, ctx);
-      ctx.state.merchantDraftCost =
-        cost + MERCHANT_DRAFT_COST_INCREMENT;
+      updateState({ merchantDraftCost: cost + MERCHANT_DRAFT_COST_INCREMENT });
       updateDraftButtonLabel();
       rewardHolder.replaceChildren();
       const { panel: rewardsPanel } = createRewardsPanel(ctx, {
@@ -6496,8 +6511,8 @@ import {
         combat.encounterType ||
         combat.ctx.state.currentEncounterType ||
         "combat";
-      combat.ctx.state.playerEssence = Math.max(0, Math.round(combat.player.essence));
-      combat.ctx.state.playerMaxEssence = combat.player.maxEssence;
+      const essenceValue = Math.max(0, Math.round(combat.player.essence));
+      setEssenceValues(essenceValue, combat.player.maxEssence);
       combat.ctx.updateResources?.();
       if (encounterType === "elite") {
         attemptCombatConsumableDrop(combat, 100);
@@ -6529,7 +6544,7 @@ import {
         combat.player.flags.breakthroughPlayedThisCombat = false;
       }
     }
-    state.activeCombat = null;
+    clearActiveCombat();
     if (combat.dom.continueButton) {
       combat.dom.continueButton.disabled = true;
       combat.dom.continueButton.textContent = "Return to the Corridor";
@@ -6545,10 +6560,10 @@ import {
     combat.status = "defeat";
     logCombat(combat, "Your essence gutters out. The manor claims another spirit.");
     if (combat.ctx?.state) {
-      combat.ctx.state.playerEssence = 0;
+      setEssenceValues(0);
       combat.ctx.updateResources?.();
     }
-    state.activeCombat = null;
+    clearActiveCombat();
     if (combat.dom.continueButton) {
       combat.dom.continueButton.disabled = false;
       combat.dom.continueButton.textContent = "Return to Main Menu";
@@ -7247,21 +7262,23 @@ import {
       exitGame,
     };
 
-    state.activeScreenContext = context;
+    updateState({ activeScreenContext: context });
 
     const screenContent = screenDef.render(context);
     contentEl.replaceChildren(screenContent);
     setBackground(screenDef, options);
 
-    state.currentScreen = screenKey;
+    const screenUpdates = { currentScreen: screenKey };
     if (screenDef.checkpoint) {
-      state.hasSave = true;
-      state.lastRunScreen = screenKey;
+      screenUpdates.hasSave = true;
+      screenUpdates.lastRunScreen = screenKey;
     }
 
     if (screenKey === "corridor") {
-      state.inRun = true;
+      screenUpdates.inRun = true;
     }
+
+    updateState(screenUpdates);
 
     updateResourceDisplays(context);
   }
@@ -7283,7 +7300,7 @@ import {
       options: {},
     });
     contentEl.appendChild(splashContent);
-    state.currentScreen = "splash";
+    updateState({ currentScreen: "splash" });
 
     const imagesToPreload = new Set();
     Object.values(screens).forEach((screen) => {
