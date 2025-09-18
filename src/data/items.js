@@ -298,3 +298,11 @@ export const CONSUMABLE_DEFINITIONS = [
     effect: { type: "unlockDoor" },
   },
 ];
+
+export const RELIC_MAP = new Map(
+  RELIC_DEFINITIONS.map((relic) => [relic.key, relic])
+);
+
+export const CONSUMABLE_MAP = new Map(
+  CONSUMABLE_DEFINITIONS.map((item) => [item.key, item])
+);
