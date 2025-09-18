@@ -64,8 +64,14 @@ import {
   createMultiCoreContribution,
 } from "./combat/actions.js";
 import screenModules from "./ui/screens/index.js";
+import { initializeDebugLogging } from "./utils/debug.js";
+import { initializeDebugLogUI } from "./ui/debug-log.js";
 
 (function () {
+  initializeDebugLogging();
+  initializeDebugLogUI();
+
+  console.info("Cebarti Manor: Bootstrapping application");
 
   const state = createState({
     playerEssence: DEFAULT_PLAYER_STATS.maxEssence,
@@ -486,12 +492,14 @@ import screenModules from "./ui/screens/index.js";
   async function transitionTo(screenKey, options = {}) {
     const screenDef = screens[screenKey];
     if (!screenDef) {
+      console.error(`Attempted to transition to unknown screen: ${screenKey}`);
       throw new Error(`Unknown screen: ${screenKey}`);
     }
     if (state.currentScreen === screenKey && !options.refresh) {
       return;
     }
 
+    console.debug("Transitioning to screen", screenKey, options);
     await fadeToBlack();
     renderScreen(screenKey, options);
     await fadeFromBlack();
@@ -515,7 +523,17 @@ import screenModules from "./ui/screens/index.js";
 
     updateState({ activeScreenContext: context });
 
-    const screenContent = screenDef.render(context);
+    let screenContent = null;
+    try {
+      screenContent = screenDef.render(context);
+    } catch (error) {
+      console.error(`Failed to render screen "${screenKey}"`, error);
+      screenContent = createElement(
+        "div",
+        "screen screen--error",
+        `Something went wrong while rendering ${screenKey}.`
+      );
+    }
     replaceContent(screenContent);
     setBackground(screenDef, options);
 
@@ -543,6 +561,7 @@ import screenModules from "./ui/screens/index.js";
 
   function initialize() {
     const initialScreen = screens.splash;
+    console.debug("Initializing first screen", initialScreen?.key);
     setBackground(initialScreen, {});
     const splashContent = initialScreen.render({
       state,
@@ -579,12 +598,22 @@ import screenModules from "./ui/screens/index.js";
         imagesToPreload.add(src);
       }
     });
-    preloadImages(Array.from(imagesToPreload));
+    const preloadList = Array.from(imagesToPreload);
+    console.debug("Preloading assets", preloadList.length);
+    preloadImages(preloadList);
+    console.info("Cebarti Manor: Initialization complete");
   }
 
   function startApplication() {
-    ensureGameShell();
-    initialize();
+    try {
+      console.debug("Ensuring game shell");
+      ensureGameShell();
+      initialize();
+      console.info("Cebarti Manor: Application started");
+    } catch (error) {
+      console.error("Cebarti Manor failed to start", error);
+      throw error;
+    }
   }
 
   if (typeof document !== "undefined") {
