@@ -1023,6 +1023,7 @@ button {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-muted);
+  grid-column: 1 / -1;
 }
 
 .screen--bestiary .codex__page-title {
