@@ -581,5 +581,17 @@ import screenModules from "./ui/screens/index.js";
     preloadImages(Array.from(imagesToPreload));
   }
 
-  initialize();
+  function startApplication() {
+    initialize();
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", startApplication, { once: true });
+    } else {
+      startApplication();
+    }
+  } else {
+    startApplication();
+  }
 })();

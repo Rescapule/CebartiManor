@@ -7,10 +7,32 @@ function getElementById(id) {
   return doc.getElementById(id);
 }
 
-const backgroundElement = getElementById("background");
-const contentElement = getElementById("content");
-const fadeOverlayElement = getElementById("fade-overlay");
-const toastElement = getElementById("toast");
+function getBackgroundElement() {
+  return getElementById("background");
+}
+
+function getContentElement() {
+  return getElementById("content");
+}
+
+function getFadeOverlayElement() {
+  return getElementById("fade-overlay");
+}
+
+function getToastElement() {
+  return getElementById("toast");
+}
+
+function getRequiredElement(getter, id) {
+  const element = typeof getter === "function" ? getter() : null;
+  if (!element) {
+    if (!doc) {
+      return null;
+    }
+    throw new Error(`Element with id "${id}" was not found in the DOM.`);
+  }
+  return element;
+}
 
 let toastTimeout = null;
 
@@ -29,6 +51,7 @@ export function createElement(tag, className, textContent) {
 }
 
 export function replaceContent(...nodes) {
+  const contentElement = getRequiredElement(getContentElement, "content");
   if (!contentElement) {
     return;
   }
@@ -36,6 +59,7 @@ export function replaceContent(...nodes) {
 }
 
 export function appendContent(...nodes) {
+  const contentElement = getRequiredElement(getContentElement, "content");
   if (!contentElement) {
     return;
   }
@@ -43,6 +67,7 @@ export function appendContent(...nodes) {
 }
 
 export function updateBackground(image, ariaLabel) {
+  const backgroundElement = getRequiredElement(getBackgroundElement, "background");
   if (!backgroundElement) {
     return;
   }
@@ -58,6 +83,7 @@ export function updateBackground(image, ariaLabel) {
 }
 
 export function showToast(message, { duration = 3600 } = {}) {
+  const toastElement = getRequiredElement(getToastElement, "toast");
   if (!toastElement) {
     return;
   }
@@ -73,6 +99,7 @@ export function showToast(message, { duration = 3600 } = {}) {
 
 export function fadeToBlack() {
   return new Promise((resolve) => {
+    const fadeOverlayElement = getFadeOverlayElement();
     if (!fadeOverlayElement) {
       resolve();
       return;
@@ -101,6 +128,7 @@ export function fadeToBlack() {
 
 export function fadeFromBlack() {
   return new Promise((resolve) => {
+    const fadeOverlayElement = getFadeOverlayElement();
     if (!fadeOverlayElement) {
       resolve();
       return;
