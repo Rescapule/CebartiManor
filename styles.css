@@ -938,6 +938,20 @@ button {
   box-shadow: 0 0 0 1px rgba(255, 214, 102, 0.45);
 }
 
+.dev-editable {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 0.25em;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.codex-overlay--dev-mode .dev-editable,
+.codex-panel--dev-active .dev-editable {
+  color: inherit;
+}
+
 .codex-panel__content {
   padding: 0 1.5rem 1.75rem;
   overflow-y: auto;

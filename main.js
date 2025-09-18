@@ -3646,6 +3646,45 @@
         viewState.pageIndex = pageIndex;
       }
 
+      const isDevMode = !!state.devMode;
+
+      function createDevEditableValue(valueText) {
+        const span = document.createElement("span");
+        span.className = "codex-dev-highlight dev-editable";
+        span.textContent = valueText;
+        return span;
+      }
+
+      function appendTextWithNumericHighlight(target, text) {
+        if (text === undefined || text === null) {
+          return;
+        }
+        const stringValue = String(text);
+        if (!isDevMode || !/[0-9]/.test(stringValue)) {
+          target.appendChild(document.createTextNode(stringValue));
+          return;
+        }
+        const fragment = document.createDocumentFragment();
+        const numberPattern = /-?\d+(?:\.\d+)?/g;
+        let lastIndex = 0;
+        let match;
+        while ((match = numberPattern.exec(stringValue)) !== null) {
+          if (match.index > lastIndex) {
+            fragment.appendChild(
+              document.createTextNode(stringValue.slice(lastIndex, match.index))
+            );
+          }
+          fragment.appendChild(createDevEditableValue(match[0]));
+          lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < stringValue.length) {
+          fragment.appendChild(
+            document.createTextNode(stringValue.slice(lastIndex))
+          );
+        }
+        target.appendChild(fragment);
+      }
+
       iconButtons.forEach((button) => {
         if (
           button.dataset.entryKey === entry.key &&
@@ -3710,17 +3749,20 @@
           if (!stat || !stat.label || stat.value === undefined || stat.value === null) {
             return;
           }
-          const valueText =
-            typeof stat.value === "number" && Number.isFinite(stat.value)
-              ? String(stat.value)
-              : String(stat.value);
-          statsList.appendChild(
-            createElement(
-              "li",
-              "codex-detail__stat",
-              `${stat.label}: ${valueText}`
-            )
+          const statItem = createElement("li", "codex-detail__stat");
+          statItem.appendChild(
+            document.createTextNode(`${stat.label}: `)
           );
+          if (typeof stat.value === "number" && Number.isFinite(stat.value)) {
+            if (isDevMode) {
+              statItem.appendChild(createDevEditableValue(String(stat.value)));
+            } else {
+              statItem.appendChild(document.createTextNode(String(stat.value)));
+            }
+          } else {
+            appendTextWithNumericHighlight(statItem, stat.value);
+          }
+          statsList.appendChild(statItem);
         });
         if (statsList.childElementCount > 0) {
           detail.appendChild(statsList);
@@ -3747,10 +3789,17 @@
               ? String(weight)
               : weight.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")
             : "";
-          const label = formattedWeight
-            ? `${contribution.name} (weight ${formattedWeight})`
-            : contribution.name;
-          const item = createElement("li", "codex-detail__list-item", label);
+          const item = createElement("li", "codex-detail__list-item");
+          appendTextWithNumericHighlight(item, contribution.name);
+          if (formattedWeight) {
+            item.appendChild(document.createTextNode(" (weight "));
+            if (isDevMode) {
+              item.appendChild(createDevEditableValue(formattedWeight));
+            } else {
+              item.appendChild(document.createTextNode(formattedWeight));
+            }
+            item.appendChild(document.createTextNode(")"));
+          }
           if (contribution.description) {
             item.title = contribution.description;
           }
@@ -3771,12 +3820,13 @@
           if (!move || !move.name) {
             return;
           }
-          const text = move.description
-            ? `${move.name} — ${move.description}`
-            : move.name;
-          list.appendChild(
-            createElement("li", "codex-detail__list-item", text)
-          );
+          const item = createElement("li", "codex-detail__list-item");
+          item.appendChild(document.createTextNode(move.name));
+          if (move.description) {
+            item.appendChild(document.createTextNode(" — "));
+            appendTextWithNumericHighlight(item, move.description);
+          }
+          list.appendChild(item);
         });
         detail.appendChild(list);
       }
