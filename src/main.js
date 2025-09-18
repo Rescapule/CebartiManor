@@ -31,6 +31,15 @@ import {
   toggleDevMode,
   updateState,
 } from "./state/state.js";
+import {
+  appendContent,
+  createElement,
+  fadeFromBlack,
+  fadeToBlack,
+  replaceContent,
+  showToast,
+  updateBackground,
+} from "./ui/dom.js";
 
 (function () {
 
@@ -1779,13 +1788,6 @@ import {
     ctx.showToast("The foyer looms ahead.");
   }
 
-  const backgroundEl = document.getElementById("background");
-  const contentEl = document.getElementById("content");
-  const fadeOverlay = document.getElementById("fade-overlay");
-  const toastEl = document.getElementById("toast");
-
-  let toastTimeout = null;
-
   const screens = {
     splash: {
       key: "splash",
@@ -2411,17 +2413,6 @@ import {
       },
     },
   };
-
-  function createElement(tag, className, textContent) {
-    const element = document.createElement(tag);
-    if (className) {
-      element.className = className;
-    }
-    if (textContent !== undefined) {
-      element.textContent = textContent;
-    }
-    return element;
-  }
 
   function createDoorButton(label, extraClasses = [], options = {}) {
     const button = document.createElement("button");
@@ -7140,28 +7131,8 @@ import {
 
   function setBackground(screenDef, options = {}) {
     const image = getBackgroundForScreen(screenDef, options);
-    if (backgroundEl.dataset.bg !== image) {
-      backgroundEl.style.backgroundImage = `url("${image}")`;
-      backgroundEl.dataset.bg = image;
-    }
     const ariaLabel = options.ariaLabel || screenDef.ariaLabel;
-    if (ariaLabel) {
-      backgroundEl.setAttribute("aria-label", ariaLabel);
-    } else {
-      backgroundEl.removeAttribute("aria-label");
-    }
-  }
-
-  function showToast(message, { duration = 3600 } = {}) {
-    if (!toastEl) return;
-    toastEl.textContent = message;
-    toastEl.classList.add("toast--visible");
-    if (toastTimeout) {
-      clearTimeout(toastTimeout);
-    }
-    toastTimeout = window.setTimeout(() => {
-      toastEl.classList.remove("toast--visible");
-    }, duration);
+    updateBackground(image, ariaLabel);
   }
 
   function exitGame() {
@@ -7177,60 +7148,6 @@ import {
         // ignore navigation errors in non-browser environments
       }
     }, 50);
-  }
-
-  function fadeToBlack() {
-    return new Promise((resolve) => {
-      if (!fadeOverlay) {
-        resolve();
-        return;
-      }
-      fadeOverlay.classList.add("visible");
-      requestAnimationFrame(() => {
-        fadeOverlay.classList.add("opaque");
-      });
-
-      const cleanup = () => {
-        window.clearTimeout(fallback);
-        fadeOverlay.removeEventListener("transitionend", onTransitionEnd);
-        resolve();
-      };
-
-      const onTransitionEnd = (event) => {
-        if (event.target === fadeOverlay) {
-          cleanup();
-        }
-      };
-
-      const fallback = window.setTimeout(cleanup, 650);
-      fadeOverlay.addEventListener("transitionend", onTransitionEnd);
-    });
-  }
-
-  function fadeFromBlack() {
-    return new Promise((resolve) => {
-      if (!fadeOverlay) {
-        resolve();
-        return;
-      }
-
-      const cleanup = () => {
-        window.clearTimeout(fallback);
-        fadeOverlay.removeEventListener("transitionend", onTransitionEnd);
-        fadeOverlay.classList.remove("visible");
-        resolve();
-      };
-
-      const onTransitionEnd = (event) => {
-        if (event.target === fadeOverlay) {
-          cleanup();
-        }
-      };
-
-      const fallback = window.setTimeout(cleanup, 650);
-      fadeOverlay.classList.remove("opaque");
-      fadeOverlay.addEventListener("transitionend", onTransitionEnd);
-    });
   }
 
   async function transitionTo(screenKey, options = {}) {
@@ -7265,7 +7182,7 @@ import {
     updateState({ activeScreenContext: context });
 
     const screenContent = screenDef.render(context);
-    contentEl.replaceChildren(screenContent);
+    replaceContent(screenContent);
     setBackground(screenDef, options);
 
     const screenUpdates = { currentScreen: screenKey };
@@ -7299,7 +7216,7 @@ import {
       showToast,
       options: {},
     });
-    contentEl.appendChild(splashContent);
+    appendContent(splashContent);
     updateState({ currentScreen: "splash" });
 
     const imagesToPreload = new Set();
