@@ -1,10 +1,10 @@
 import { TOTAL_ROOMS_PER_RUN } from "../../data/index.js";
 import {
   applyRecoveryRoomBenefits,
-  createCombatExperience,
   createMerchantPanel,
   createRewardsPanel,
 } from "../../combat/engine.js";
+import { createCombatExperience } from "../combat.js";
 import { createElement } from "../dom.js";
 import { updateState } from "../../state/state.js";
 

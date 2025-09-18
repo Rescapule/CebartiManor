@@ -51,12 +51,12 @@ import {
   updateBackground,
 } from "./ui/dom.js";
 import {
-  ACTION_DEFINITIONS,
-  createCombatExperience,
   applyRecoveryRoomBenefits,
   createRewardsPanel,
   createMerchantPanel,
 } from "./combat/engine.js";
+import { ACTION_DEFINITIONS } from "./combat/actions-data.js";
+import { createCombatExperience, updateCombatUI } from "./ui/combat.js";
 import {
   ACTION_SEQUENCES,
   createCoreContribution,
