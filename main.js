@@ -1935,6 +1935,7 @@
     resourceDisplays: {},
     codexView: null,
     codexSelections: {},
+    devMode: false,
     activeCombat: null,
     activeScreenContext: null,
     merchantDraftCost: MERCHANT_BASE_DRAFT_COST,
@@ -3955,6 +3956,30 @@
     renderPage(currentPageIndex);
   }
 
+  function updateDevModeUI(view) {
+    if (!view) {
+      return;
+    }
+    const isActive = !!state.devMode;
+    const isBestiary = view.mode === "bestiary";
+    if (view.overlay) {
+      view.overlay.classList.toggle(
+        "codex-overlay--dev-mode",
+        isBestiary && isActive
+      );
+    }
+    if (view.panel) {
+      view.panel.classList.toggle(
+        "codex-panel--dev-active",
+        isBestiary && isActive
+      );
+    }
+    if (view.devToggleButton) {
+      view.devToggleButton.classList.toggle("codex-dev-toggle--active", isActive);
+      view.devToggleButton.setAttribute("aria-pressed", String(isActive));
+    }
+  }
+
   function refreshCodexOverlay(ctxOverride) {
     const view = state.codexView;
     if (!view || typeof view.renderContent !== "function") {
@@ -3962,6 +3987,7 @@
     }
     const ctx = ctxOverride || view.ctx || { state };
     view.ctx = ctx;
+    updateDevModeUI(view);
     if (!view.content) {
       return;
     }
@@ -3991,10 +4017,34 @@
 
     const header = createElement("div", "codex-panel__header");
     const title = createElement("h2", "codex-panel__title", titleText);
+    const actions = createElement("div", "codex-panel__actions");
     const closeButton = createElement("button", "codex-panel__close", "Close");
     closeButton.type = "button";
     closeButton.addEventListener("click", () => closeCodexOverlay());
-    header.append(title, closeButton);
+
+    let devToggleButton = null;
+    if (mode === "bestiary") {
+      devToggleButton = createElement("button", "codex-dev-toggle");
+      devToggleButton.type = "button";
+      devToggleButton.setAttribute("aria-label", "Toggle developer mode");
+      devToggleButton.title = "Toggle developer mode";
+      const logo = document.createElement("img");
+      logo.src = "logofull.png";
+      logo.alt = "Anabolic Scrub Studios logo";
+      logo.loading = "lazy";
+      logo.decoding = "async";
+      logo.className = "codex-dev-toggle__logo";
+      devToggleButton.appendChild(logo);
+      devToggleButton.addEventListener("click", () => {
+        state.devMode = !state.devMode;
+        updateDevModeUI(state.codexView);
+        refreshCodexOverlay();
+      });
+      actions.appendChild(devToggleButton);
+    }
+
+    actions.appendChild(closeButton);
+    header.append(title, actions);
 
     const content = createElement("div", "codex-panel__content");
     panel.append(header, content);
@@ -4026,8 +4076,10 @@
       selectedType: storedSelection.type,
       pageIndex: storedSelection.pageIndex || 0,
       renderContent,
+      devToggleButton,
     };
 
+    updateDevModeUI(state.codexView);
     refreshCodexOverlay(ctx);
     window.requestAnimationFrame(() => closeButton.focus());
   }
