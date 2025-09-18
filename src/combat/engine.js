@@ -19,6 +19,12 @@ import {
   setEssenceValues,
   updateState,
 } from '../state/state.js';
+import {
+  addConsumable,
+  addGold,
+  addMemoryToState,
+  addRelic,
+} from '../state/inventory.js';
 import { ensureDefaultMemories } from '../state/memories.js';
 import {
   DEFAULT_PLAYER_STATS,
