@@ -35,6 +35,7 @@ import {
   replaceContent,
   showToast,
   updateBackground,
+  ensureGameShell,
 } from "./ui/dom.js";
 import {
   applyRecoveryRoomBenefits,
@@ -582,6 +583,7 @@ import screenModules from "./ui/screens/index.js";
   }
 
   function startApplication() {
+    ensureGameShell();
     initialize();
   }
 
