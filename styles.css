@@ -938,6 +938,25 @@ button {
   box-shadow: 0 0 0 1px rgba(255, 214, 102, 0.45);
 }
 
+.codex-dev-input {
+  width: auto;
+  min-width: 3.5ch;
+  max-width: 9ch;
+  padding: 0.1rem 0.3rem;
+  margin: 0;
+  border: 1px solid rgba(255, 214, 102, 0.65);
+  border-radius: 4px;
+  background: rgba(17, 10, 6, 0.8);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.codex-dev-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(255, 214, 102, 0.55);
+}
+
 .dev-editable {
   display: inline-flex;
   align-items: center;

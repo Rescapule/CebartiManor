@@ -3104,6 +3104,223 @@
     state.codexView = null;
   }
 
+  function getNestedValue(source, path = []) {
+    if (!source || !Array.isArray(path)) {
+      return undefined;
+    }
+    return path.reduce((current, key) => {
+      if (current && Object.prototype.hasOwnProperty.call(current, key)) {
+        return current[key];
+      }
+      return undefined;
+    }, source);
+  }
+
+  function setNestedValue(source, path = [], value) {
+    if (!source || !Array.isArray(path) || path.length === 0) {
+      return;
+    }
+    let current = source;
+    for (let index = 0; index < path.length - 1; index += 1) {
+      const key = path[index];
+      if (!current[key] || typeof current[key] !== "object") {
+        current[key] = {};
+      }
+      current = current[key];
+    }
+    current[path[path.length - 1]] = value;
+  }
+
+  function formatNumberWithExample(example, value) {
+    if (!Number.isFinite(value)) {
+      return String(value);
+    }
+    if (typeof example === "string" && example.includes(".")) {
+      const decimals = example.split(".")[1]?.length || 0;
+      return Number(value).toFixed(decimals);
+    }
+    if (typeof example === "number" && !Number.isInteger(example)) {
+      const decimalPart = String(example).split(".")[1] || "";
+      return Number(value).toFixed(decimalPart.length);
+    }
+    if (typeof example === "number") {
+      return String(Math.round(value));
+    }
+    return String(value);
+  }
+
+  function createDevNumberBinding(source, path = [], options = {}) {
+    if (!source || !Array.isArray(path) || path.length === 0) {
+      return null;
+    }
+    const { min = null, max = null, step = "any", formatValue = null, onChange = null } =
+      options || {};
+    return {
+      step,
+      get() {
+        const raw = getNestedValue(source, path);
+        return Number(raw);
+      },
+      format(value) {
+        if (typeof formatValue === "function") {
+          return formatValue(value);
+        }
+        const example = getNestedValue(source, path);
+        return formatNumberWithExample(example, value);
+      },
+      set(newValue) {
+        if (!Number.isFinite(newValue)) {
+          return false;
+        }
+        let adjusted = newValue;
+        if (Number.isFinite(min) && adjusted < min) {
+          adjusted = min;
+        }
+        if (Number.isFinite(max) && adjusted > max) {
+          adjusted = max;
+        }
+        setNestedValue(source, path, adjusted);
+        if (typeof onChange === "function") {
+          onChange(adjusted, source, path);
+        }
+        return true;
+      },
+    };
+  }
+
+  function createDevStringNumberBinding(source, path = [], matchIndex = 0, options = {}) {
+    if (!source || !Array.isArray(path) || path.length === 0) {
+      return null;
+    }
+    const { step = "any", onChange = null } = options || {};
+    const numberPattern = /-?\d+(?:\.\d+)?/g;
+    return {
+      step,
+      get() {
+        const raw = getNestedValue(source, path);
+        if (typeof raw !== "string") {
+          return NaN;
+        }
+        const matches = raw.match(numberPattern);
+        if (!matches || matchIndex < 0 || matchIndex >= matches.length) {
+          return NaN;
+        }
+        return Number(matches[matchIndex]);
+      },
+      format(value) {
+        const raw = getNestedValue(source, path);
+        if (typeof raw !== "string") {
+          return String(value);
+        }
+        const matches = raw.match(numberPattern);
+        const example = matches?.[matchIndex];
+        return formatNumberWithExample(example, value);
+      },
+      set(newValue) {
+        if (!Number.isFinite(newValue)) {
+          return false;
+        }
+        const raw = getNestedValue(source, path);
+        if (typeof raw !== "string") {
+          return false;
+        }
+        let occurrence = -1;
+        const replaced = raw.replace(numberPattern, (match) => {
+          occurrence += 1;
+          if (occurrence === matchIndex) {
+            return formatNumberWithExample(match, newValue);
+          }
+          return match;
+        });
+        setNestedValue(source, path, replaced);
+        if (typeof onChange === "function") {
+          onChange(newValue, replaced, source, path, matchIndex);
+        }
+        return true;
+      },
+    };
+  }
+
+  function buildStatusEffectTextData(effects) {
+    if (!effects || typeof effects !== "object") {
+      return { text: "", bindings: [] };
+    }
+    const parts = [];
+    const bindings = [];
+    Object.entries(effects).forEach(([key, amount]) => {
+      if (amount === undefined || amount === null) {
+        return;
+      }
+      let label = "";
+      if (typeof formatStatusLabel === "function") {
+        label = formatStatusLabel(key, { stacks: amount });
+      }
+      if (!label) {
+        const formattedKey = key
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (char) => char.toUpperCase());
+        const numericAmount = Number(amount);
+        label = Number.isFinite(numericAmount)
+          ? `${formattedKey} ${numericAmount}`
+          : formattedKey;
+      }
+      parts.push(label);
+      const matches = label.match(/-?\d+(?:\.\d+)?/g) || [];
+      if (matches.length > 0) {
+        bindings.push(createDevNumberBinding(effects, [key]));
+        if (matches.length > 1) {
+          for (let index = 1; index < matches.length; index += 1) {
+            bindings.push(null);
+          }
+        }
+      }
+    });
+    return { text: parts.join(", "), bindings };
+  }
+
+  function buildMoveDescriptionData(move) {
+    if (!move) {
+      return { text: "", bindingResolver: null };
+    }
+    const numberPattern = /-?\d+(?:\.\d+)?/g;
+    const segments = [];
+    const bindings = [];
+    if (move.description) {
+      const descriptionText = move.description;
+      segments.push(descriptionText);
+      const matches = descriptionText.match(numberPattern) || [];
+      matches.forEach((_, index) => {
+        bindings.push(createDevStringNumberBinding(move, ["description"], index));
+      });
+    }
+    const effectParts = [];
+    if (Number.isFinite(Number(move.damage)) && Number(move.damage) !== 0) {
+      effectParts.push(`Damage ${Number(move.damage)}`);
+      bindings.push(createDevNumberBinding(move, ["damage"]));
+    }
+    if (Number.isFinite(Number(move.block)) && Number(move.block) !== 0) {
+      effectParts.push(`Block ${Number(move.block)}`);
+      bindings.push(createDevNumberBinding(move, ["block"]));
+    }
+    if (Number.isFinite(Number(move.heal)) && Number(move.heal) !== 0) {
+      effectParts.push(`Heal ${Number(move.heal)}`);
+      bindings.push(createDevNumberBinding(move, ["heal"]));
+    }
+    if (move.apply) {
+      const statusData = buildStatusEffectTextData(move.apply);
+      if (statusData.text) {
+        effectParts.push(`Applies ${statusData.text}`);
+        statusData.bindings.forEach((binding) => bindings.push(binding));
+      }
+    }
+    if (effectParts.length > 0) {
+      segments.push(effectParts.join(" • "));
+    }
+    const text = segments.join(" ").trim();
+    const bindingResolver = (matchValue, matchIndex) => bindings[matchIndex] || null;
+    return { text, bindingResolver };
+  }
+
   function buildMemoryEntriesFromKeys(keys = []) {
     const seen = new Set();
     const entries = [];
@@ -3118,21 +3335,31 @@
       }
       const contributions = Array.isArray(memory.contributions)
         ? memory.contributions
-            .map((entry) => {
+            .map((entry, index) => {
               const action = ACTION_DEFINITIONS[entry.action];
               if (!action) {
                 return null;
               }
+              const bindingSource = memory.contributions[index];
               return {
                 key: entry.action,
                 name: action.name || entry.action,
                 description: action.description || "",
                 weight: Number(entry.weight) || 0,
+                weightBinding: bindingSource
+                  ? createDevNumberBinding(bindingSource, ["weight"])
+                  : null,
               };
             })
             .filter(Boolean)
         : [];
-      const detailParagraphs = [memory.description];
+      const detailParagraphs = [];
+      if (memory.description) {
+        detailParagraphs.push({
+          text: memory.description,
+          bindingSource: { object: memory, path: ["description"] },
+        });
+      }
       if (memory.passive) {
         const passiveText = formatPassiveDescription(memory.passive);
         if (passiveText) {
@@ -3229,11 +3456,30 @@
       seen.add(key);
       const paragraphs = [];
       if (action.description) {
-        paragraphs.push(action.description);
+        paragraphs.push({
+          text: action.description,
+          bindingSource: { object: action, path: ["description"] },
+        });
       }
       const costLine = formatActionCostLine(action.cost);
       if (costLine) {
-        paragraphs.push(costLine);
+        const costPaths = [];
+        if (Number.isFinite(Number(action.cost?.ap)) && Number(action.cost.ap) > 0) {
+          costPaths.push(["cost", "ap"]);
+        }
+        if (
+          Number.isFinite(Number(action.cost?.essence)) &&
+          Number(action.cost.essence) > 0
+        ) {
+          costPaths.push(["cost", "essence"]);
+        }
+        paragraphs.push({
+          text: costLine,
+          bindingResolver: (matchValue, matchIndex) => {
+            const path = costPaths[matchIndex];
+            return path ? createDevNumberBinding(action, path, { min: 0 }) : null;
+          },
+        });
       }
       if (action.chain) {
         const sequence = ACTION_SEQUENCES[action.chain.key] || [];
@@ -3253,7 +3499,13 @@
         emotion: action.emotion || "",
         emotionSlug: slugifyEmotion(action.emotion),
         summary: action.description || "",
-        detailParagraphs: paragraphs.filter(Boolean),
+        detailParagraphs: paragraphs.filter((paragraph) => {
+          if (!paragraph) {
+            return false;
+          }
+          const text = typeof paragraph === "string" ? paragraph : paragraph.text;
+          return typeof text === "string" && text.trim().length > 0;
+        }),
         iconSymbol: action.name.charAt(0).toUpperCase(),
         stats: buildActionStats(action),
       });
@@ -3298,14 +3550,23 @@
       }
       const stats = [];
       if (Number.isFinite(Number(definition?.maxEssence))) {
-        stats.push({ label: "Max Essence", value: Number(definition.maxEssence) });
+        stats.push({
+          label: "Max Essence",
+          value: Number(definition.maxEssence),
+          devBinding: definition
+            ? createDevNumberBinding(definition, ["maxEssence"], { min: 1 })
+            : null,
+        });
       }
       const moves = Array.isArray(definition?.moves)
-        ? definition.moves.map((move) => ({
-            key: move.key,
-            name: move.name || move.key,
-            description: formatMoveDescription(move),
-          }))
+        ? definition.moves.map((move) => {
+            const descriptionData = buildMoveDescriptionData(move);
+            return {
+              key: move.key,
+              name: move.name || move.key,
+              description: descriptionData,
+            };
+          })
         : [];
       entries.push({
         key,
@@ -3383,20 +3644,37 @@
     }
     const damage = Number(action.baseDamage);
     if (Number.isFinite(damage) && damage !== 0) {
-      stats.push({ label: "Base Damage", value: damage });
+      stats.push({
+        label: "Base Damage",
+        value: damage,
+        devBinding: createDevNumberBinding(action, ["baseDamage"]),
+      });
     }
     const block = Number(action.block);
     if (Number.isFinite(block) && block !== 0) {
-      stats.push({ label: "Block", value: block });
+      stats.push({
+        label: "Block",
+        value: block,
+        devBinding: createDevNumberBinding(action, ["block"]),
+      });
     }
     const heal = Number(action.heal);
     if (Number.isFinite(heal) && heal !== 0) {
-      stats.push({ label: "Heal", value: heal });
+      stats.push({
+        label: "Heal",
+        value: heal,
+        devBinding: createDevNumberBinding(action, ["heal"]),
+      });
     }
     if (action.apply) {
-      const statusText = formatStatusEffectsText(action.apply);
-      if (statusText) {
-        stats.push({ label: "Applies", value: statusText });
+      const statusData = buildStatusEffectTextData(action.apply);
+      if (statusData.text) {
+        stats.push({
+          label: "Applies",
+          value: { text: statusData.text },
+          textBindingResolver: (matchValue, matchIndex) =>
+            statusData.bindings[matchIndex] || null,
+        });
       }
     }
     return stats;
@@ -3410,66 +3688,6 @@
       .split(/[\s_-]+/)
       .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
       .join(" ");
-  }
-
-  function formatStatusEffectsText(effects) {
-    if (!effects || typeof effects !== "object") {
-      return "";
-    }
-    const parts = [];
-    Object.entries(effects).forEach(([key, amount]) => {
-      if (amount === undefined || amount === null) {
-        return;
-      }
-      let label = "";
-      if (typeof formatStatusLabel === "function") {
-        label = formatStatusLabel(key, { stacks: amount });
-      }
-      if (!label) {
-        const formattedKey = key
-          .replace(/([A-Z])/g, " $1")
-          .replace(/^./, (char) => char.toUpperCase());
-        const numericAmount = Number(amount);
-        label = Number.isFinite(numericAmount)
-          ? `${formattedKey} ${numericAmount}`
-          : formattedKey;
-      }
-      parts.push(label);
-    });
-    return parts.join(", ");
-  }
-
-  function formatMoveDescription(move) {
-    if (!move) {
-      return "";
-    }
-    const parts = [];
-    if (move.description) {
-      parts.push(move.description);
-    }
-    const effectParts = [];
-    const damage = Number(move.damage);
-    if (Number.isFinite(damage) && damage !== 0) {
-      effectParts.push(`Damage ${damage}`);
-    }
-    const block = Number(move.block);
-    if (Number.isFinite(block) && block !== 0) {
-      effectParts.push(`Block ${block}`);
-    }
-    const heal = Number(move.heal);
-    if (Number.isFinite(heal) && heal !== 0) {
-      effectParts.push(`Heal ${heal}`);
-    }
-    if (move.apply) {
-      const statusText = formatStatusEffectsText(move.apply);
-      if (statusText) {
-        effectParts.push(`Applies ${statusText}`);
-      }
-    }
-    if (effectParts.length > 0) {
-      parts.push(effectParts.join(" • "));
-    }
-    return parts.join(" ").trim();
   }
 
   function createConsumablesSection(ctx) {
@@ -3648,19 +3866,76 @@
 
       const isDevMode = !!state.devMode;
 
-      function createDevEditableValue(valueText) {
-        const span = document.createElement("span");
-        span.className = "codex-dev-highlight dev-editable";
-        span.textContent = valueText;
-        return span;
+      function createDevEditableValue(valueText, binding) {
+        if (!isDevMode || !binding) {
+          const span = document.createElement("span");
+          span.className = "codex-dev-highlight dev-editable";
+          span.textContent = valueText;
+          return span;
+        }
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.step = binding?.step || "any";
+        input.className = "codex-dev-input codex-dev-highlight dev-editable";
+
+        const resolveValue = () => {
+          if (binding && typeof binding.get === "function") {
+            const raw = binding.get();
+            if (Number.isFinite(raw)) {
+              return binding.format ? binding.format(raw) : String(raw);
+            }
+          }
+          return valueText;
+        };
+
+        const resetValue = () => {
+          input.value = resolveValue();
+        };
+
+        resetValue();
+
+        const commit = () => {
+          const numericValue = Number(input.value);
+          if (!Number.isFinite(numericValue)) {
+            resetValue();
+            return;
+          }
+          if (binding && typeof binding.set === "function") {
+            const success = binding.set(numericValue);
+            if (success === false) {
+              resetValue();
+              return;
+            }
+          }
+          refreshCodexOverlay();
+        };
+
+        input.addEventListener("blur", commit);
+        input.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            input.blur();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            resetValue();
+            input.blur();
+          }
+        });
+
+        return input;
       }
 
-      function appendTextWithNumericHighlight(target, text) {
+      function appendTextWithNumericHighlight(target, text, options = {}) {
         if (text === undefined || text === null) {
           return;
         }
         const stringValue = String(text);
-        if (!isDevMode || !/[0-9]/.test(stringValue)) {
+        if (!/[0-9]/.test(stringValue)) {
+          target.appendChild(document.createTextNode(stringValue));
+          return;
+        }
+        if (!isDevMode) {
           target.appendChild(document.createTextNode(stringValue));
           return;
         }
@@ -3668,14 +3943,30 @@
         const numberPattern = /-?\d+(?:\.\d+)?/g;
         let lastIndex = 0;
         let match;
+        let matchIndex = 0;
         while ((match = numberPattern.exec(stringValue)) !== null) {
           if (match.index > lastIndex) {
             fragment.appendChild(
               document.createTextNode(stringValue.slice(lastIndex, match.index))
             );
           }
-          fragment.appendChild(createDevEditableValue(match[0]));
+          let binding = null;
+          if (typeof options.bindingResolver === "function") {
+            binding = options.bindingResolver(match[0], matchIndex);
+          } else if (options.bindingSource) {
+            const { object, path, options: bindingOptions } = options.bindingSource;
+            if (object && Array.isArray(path)) {
+              binding = createDevStringNumberBinding(
+                object,
+                path,
+                matchIndex,
+                bindingOptions
+              );
+            }
+          }
+          fragment.appendChild(createDevEditableValue(match[0], binding));
           lastIndex = match.index + match[0].length;
+          matchIndex += 1;
         }
         if (lastIndex < stringValue.length) {
           fragment.appendChild(
@@ -3754,13 +4045,26 @@
             document.createTextNode(`${stat.label}: `)
           );
           if (typeof stat.value === "number" && Number.isFinite(stat.value)) {
-            if (isDevMode) {
-              statItem.appendChild(createDevEditableValue(String(stat.value)));
+            if (isDevMode && stat.devBinding) {
+              statItem.appendChild(
+                createDevEditableValue(String(stat.value), stat.devBinding)
+              );
             } else {
               statItem.appendChild(document.createTextNode(String(stat.value)));
             }
+          } else if (
+            stat.value &&
+            typeof stat.value === "object" &&
+            typeof stat.value.text === "string"
+          ) {
+            appendTextWithNumericHighlight(statItem, stat.value.text, {
+              bindingResolver: stat.value.bindingResolver,
+              bindingSource: stat.value.bindingSource,
+            });
           } else {
-            appendTextWithNumericHighlight(statItem, stat.value);
+            appendTextWithNumericHighlight(statItem, stat.value, {
+              bindingResolver: stat.textBindingResolver,
+            });
           }
           statsList.appendChild(statItem);
         });
@@ -3769,13 +4073,27 @@
         }
       }
 
-      entry.detailParagraphs
-        .filter((text) => typeof text === "string" && text.trim().length > 0)
-        .forEach((text) => {
-          detail.appendChild(
-            createElement("p", "codex-detail__description", text)
-          );
+      if (entry.detailParagraphs && entry.detailParagraphs.length > 0) {
+        entry.detailParagraphs.forEach((paragraph) => {
+          const paragraphData =
+            typeof paragraph === "string"
+              ? { text: paragraph }
+              : paragraph;
+          if (
+            !paragraphData ||
+            typeof paragraphData.text !== "string" ||
+            paragraphData.text.trim().length === 0
+          ) {
+            return;
+          }
+          const description = createElement("p", "codex-detail__description");
+          appendTextWithNumericHighlight(description, paragraphData.text, {
+            bindingResolver: paragraphData.bindingResolver,
+            bindingSource: paragraphData.bindingSource,
+          });
+          detail.appendChild(description);
         });
+      }
 
       if (entry.contributions && entry.contributions.length > 0) {
         detail.appendChild(
@@ -3793,8 +4111,10 @@
           appendTextWithNumericHighlight(item, contribution.name);
           if (formattedWeight) {
             item.appendChild(document.createTextNode(" (weight "));
-            if (isDevMode) {
-              item.appendChild(createDevEditableValue(formattedWeight));
+            if (isDevMode && contribution.weightBinding) {
+              item.appendChild(
+                createDevEditableValue(formattedWeight, contribution.weightBinding)
+              );
             } else {
               item.appendChild(document.createTextNode(formattedWeight));
             }
@@ -3822,9 +4142,16 @@
           }
           const item = createElement("li", "codex-detail__list-item");
           item.appendChild(document.createTextNode(move.name));
-          if (move.description) {
+          const descriptionData =
+            typeof move.description === "string"
+              ? { text: move.description }
+              : move.description;
+          if (descriptionData && descriptionData.text) {
             item.appendChild(document.createTextNode(" — "));
-            appendTextWithNumericHighlight(item, move.description);
+            appendTextWithNumericHighlight(item, descriptionData.text, {
+              bindingResolver: descriptionData.bindingResolver,
+              bindingSource: descriptionData.bindingSource,
+            });
           }
           list.appendChild(item);
         });
