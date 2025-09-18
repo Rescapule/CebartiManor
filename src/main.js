@@ -2331,18 +2331,6 @@ import screenModules from "./ui/screens/index.js";
     return encounterType === "combat" || encounterType === "elite" || encounterType === "boss";
   }
 
-  function ensureDefaultMemories(ctx) {
-    if (!Array.isArray(ctx.state.playerMemories) || ctx.state.playerMemories.length === 0) {
-      updateState({
-        playerMemories: [
-          "memoryBarFight",
-          "memoryWatchman",
-          "memorySong",
-        ],
-      });
-    }
-  }
-
   function getBackgroundForScreen(screenDef, options = {}) {
     if (options.background) {
       return options.background;

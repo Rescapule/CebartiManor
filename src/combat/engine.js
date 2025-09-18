@@ -19,6 +19,7 @@ import {
   setEssenceValues,
   updateState,
 } from '../state/state.js';
+import { ensureDefaultMemories } from '../state/memories.js';
 import {
   DEFAULT_PLAYER_STATS,
   MERCHANT_BASE_DRAFT_COST,
