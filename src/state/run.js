@@ -12,7 +12,7 @@ import {
   clearCodexView,
   updateState,
 } from "./state.js";
-import { sampleWithoutReplacement } from "./random.js";
+import { getRandomItem, sampleWithoutReplacement } from "./random.js";
 import {
   DEFAULT_PLAYER_STATS,
   MERCHANT_BASE_DRAFT_COST,
@@ -90,14 +90,6 @@ export function clearRunState(options = {}) {
   });
   clearCodexView();
   clearActiveCombat();
-}
-
-function getRandomItem(source) {
-  if (!Array.isArray(source) || source.length === 0) {
-    return null;
-  }
-  const index = Math.floor(Math.random() * source.length);
-  return source[index];
 }
 
 function getEncounterPoolForType(type) {
