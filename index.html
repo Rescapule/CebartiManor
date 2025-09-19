@@ -17,6 +17,23 @@
       <div id="fade-overlay" class="fade-overlay" aria-hidden="true"></div>
       <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
     </div>
-    <script type="module" src="src/main.js"></script>
+    <script>
+      window.__cebartiManorLoadFallback = function () {
+        if (window.__cebartiManorFallbackLoaded) {
+          return;
+        }
+        window.__cebartiManorFallbackLoaded = true;
+        const script = document.createElement("script");
+        script.src = "dist/game.bundle.js";
+        script.defer = true;
+        script.dataset.fallback = "true";
+        document.head.appendChild(script);
+      };
+    </script>
+    <script
+      type="module"
+      src="src/main.js"
+      onerror="window.__cebartiManorLoadFallback && window.__cebartiManorLoadFallback()"
+    ></script>
   </body>
 </html>
