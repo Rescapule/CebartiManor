@@ -14,3 +14,11 @@ export function sampleWithoutReplacement(source, count) {
   const pool = shuffle(source);
   return pool.slice(0, Math.min(count, pool.length));
 }
+
+export function getRandomItem(source) {
+  if (!Array.isArray(source) || source.length === 0) {
+    return null;
+  }
+  const index = Math.floor(Math.random() * source.length);
+  return source[index];
+}

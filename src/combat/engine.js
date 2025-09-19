@@ -31,7 +31,7 @@ import {
   MERCHANT_BASE_DRAFT_COST,
   MERCHANT_DRAFT_COST_INCREMENT,
 } from '../state/config.js';
-import { sampleWithoutReplacement } from '../state/random.js';
+import { getRandomItem, sampleWithoutReplacement } from '../state/random.js';
 import { showFloatingText, updateCombatLog, updateCombatUI } from '../ui/combat.js';
 import { createElement } from '../ui/dom.js';
 
