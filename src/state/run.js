@@ -12,11 +12,12 @@ import {
   clearCodexView,
   updateState,
 } from "./state.js";
-import { getRandomItem, sampleWithoutReplacement } from "./random.js";
+import { sampleWithoutReplacement } from "./random.js";
 import {
   DEFAULT_PLAYER_STATS,
   MERCHANT_BASE_DRAFT_COST,
 } from "./config.js";
+import { filterDevDisabledEntries } from "./devtools.js";
 
 function buildInitialRoomPool() {
   return ROOM_DEFINITIONS.map((room) => room.key);
@@ -96,11 +97,11 @@ function getEncounterPoolForType(type) {
   switch (type) {
     case "combat":
     case "elite":
-      return enemySprites;
+      return filterDevDisabledEntries("enemy", enemySprites);
     case "boss":
-      return bossSprites;
+      return filterDevDisabledEntries("boss", bossSprites);
     case "merchant":
-      return merchantSprites;
+      return filterDevDisabledEntries("merchant", merchantSprites);
     default:
       return null;
   }
@@ -111,7 +112,7 @@ export function getEncounterForType(type) {
   if (!pool) {
     return null;
   }
-  const sprite = getRandomItem(pool);
+  const [sprite] = sampleWithoutReplacement(pool, 1);
   if (!sprite) {
     return null;
   }

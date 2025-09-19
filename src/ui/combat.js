@@ -10,6 +10,7 @@ import {
 } from '../combat/engine.js';
 import { playerCharacter } from '../data/index.js';
 import { setActiveCombat, updateState } from '../state/state.js';
+import { isDevEntryDisabled } from '../state/devtools.js';
 import { createElement } from './dom.js';
 
 function createCombatantDisplay(combatant, role, encounter) {
@@ -266,6 +267,7 @@ function createActionButton(combat, slot, index) {
     button.textContent = 'Unknown';
     return button;
   }
+  const devDisabled = isDevEntryDisabled('action', action.key);
   const apCost = getActionApCost(combat, action);
   const essenceCost = getActionEssenceCost(combat, action);
   const header = createElement('div', 'action-button__header');
@@ -297,12 +299,19 @@ function createActionButton(combat, slot, index) {
   }
 
   const canUse =
+    !devDisabled &&
     combat.turn === 'player' &&
     combat.status === 'inProgress' &&
     combat.player.ap >= apCost &&
     combat.player.essence >= essenceCost;
-  button.disabled = !canUse;
-  button.title = `${action.name} — ${action.description}`;
+  if (devDisabled) {
+    button.classList.add('action-button--dev-disabled');
+    button.disabled = true;
+    button.title = `${action.name} is disabled in developer mode.`;
+  } else {
+    button.disabled = !canUse;
+    button.title = `${action.name} — ${action.description}`;
+  }
   if (canUse) {
     button.addEventListener('click', () => performPlayerAction(combat, index));
   }

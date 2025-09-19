@@ -1,6 +1,8 @@
 import { backgrounds } from "../../data/index.js";
 import { createElement } from "../dom.js";
 import { updateState } from "../../state/state.js";
+import { isDevEntryDisabled } from "../../state/devtools.js";
+import { getRequiredMemoryDraftSelections } from "../inventory.js";
 
 const wellScreen = {
   key: "well",
@@ -27,10 +29,17 @@ const wellScreen = {
       "button button--primary",
       "Continue"
     );
-    continueButton.disabled =
-      ctx.state.playerMemories.length !== ctx.state.draftPacks.length;
+    const requiredSelections = getRequiredMemoryDraftSelections(ctx.state);
+    const completedSelections = Array.isArray(ctx.state.playerMemories)
+      ? ctx.state.playerMemories.filter((key) => !isDevEntryDisabled("memory", key)).length
+      : 0;
+    continueButton.disabled = completedSelections < requiredSelections;
     continueButton.addEventListener("click", async () => {
-      if (ctx.state.playerMemories.length !== ctx.state.draftPacks.length) {
+      const state = ctx.state;
+      const doneCount = Array.isArray(state.playerMemories)
+        ? state.playerMemories.filter((key) => !isDevEntryDisabled("memory", key)).length
+        : 0;
+      if (doneCount < requiredSelections) {
         ctx.showToast("Choose one memory from each set to proceed.");
         return;
       }

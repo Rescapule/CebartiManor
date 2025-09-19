@@ -31,7 +31,8 @@ import {
   MERCHANT_BASE_DRAFT_COST,
   MERCHANT_DRAFT_COST_INCREMENT,
 } from '../state/config.js';
-import { getRandomItem, sampleWithoutReplacement } from '../state/random.js';
+import { sampleWithoutReplacement } from '../state/random.js';
+import { filterDevDisabledEntries, isDevEntryDisabled } from '../state/devtools.js';
 import { showFloatingText, updateCombatLog, updateCombatUI } from '../ui/combat.js';
 import { createElement } from '../ui/dom.js';
 
@@ -74,6 +75,9 @@ function createPassiveSummary() {
 function summarizeMemoryPassives(memoryKeys = []) {
   const summary = createPassiveSummary();
   memoryKeys.forEach((key) => {
+    if (isDevEntryDisabled("memory", key)) {
+      return;
+    }
     const memory = MEMORY_MAP.get(key);
     if (!memory || !memory.passive) {
       return;
@@ -110,6 +114,9 @@ function summarizeMemoryPassives(memoryKeys = []) {
 function summarizeRelicPassives(relicKeys = []) {
   const summary = createPassiveSummary();
   relicKeys.forEach((key) => {
+    if (isDevEntryDisabled("relic", key)) {
+      return;
+    }
     const relic = RELIC_MAP.get(key);
     if (!relic || !relic.passive) {
       return;
@@ -254,12 +261,18 @@ function combinePassiveSummaries(memorySummary, relicSummary) {
 function buildActionSoupFromMemories(memoryKeys = []) {
   const weights = new Map();
   memoryKeys.forEach((key) => {
+    if (isDevEntryDisabled("memory", key)) {
+      return;
+    }
     const memory = MEMORY_MAP.get(key);
     if (!memory || !Array.isArray(memory.contributions)) {
       return;
     }
     memory.contributions.forEach((entry) => {
       if (!entry || !entry.action) {
+        return;
+      }
+      if (isDevEntryDisabled("action", entry.action)) {
         return;
       }
       const definition = ACTION_DEFINITIONS[entry.action];
@@ -323,9 +336,11 @@ function cloneEnemyMoves(moves, multiplier) {
 
 export function createCombatState(ctx, { encounterType, encounter, room }) {
   ensureDefaultMemories(ctx);
-  const memoryKeys = ctx.state.playerMemories.slice();
+  const memoryKeys = Array.isArray(ctx.state.playerMemories)
+    ? ctx.state.playerMemories.filter((key) => !isDevEntryDisabled("memory", key))
+    : [];
   const relicKeys = Array.isArray(ctx.state.playerRelics)
-    ? ctx.state.playerRelics.slice()
+    ? ctx.state.playerRelics.filter((key) => !isDevEntryDisabled("relic", key))
     : [];
   const memoryPassives = summarizeMemoryPassives(memoryKeys);
   const relicPassives = summarizeRelicPassives(relicKeys);
@@ -476,6 +491,9 @@ function refreshActionSlots(combat) {
 }
 
 function createActionSlot(actionKey) {
+  if (isDevEntryDisabled("action", actionKey)) {
+    return null;
+  }
   const action = ACTION_DEFINITIONS[actionKey];
   if (!action) {
     return null;
@@ -490,11 +508,20 @@ function createActionSlot(actionKey) {
 }
 
 function drawActionFromSoup(combat) {
-  const entries = combat.soup || [];
+  const entries = (combat.soup || []).filter(
+    (entry) =>
+      entry &&
+      entry.action &&
+      !isDevEntryDisabled("action", entry.action) &&
+      ACTION_DEFINITIONS[entry.action]
+  );
   if (!entries.length) {
     return null;
   }
-  const total = entries.reduce((sum, entry) => sum + (Number(entry.weight) || 0), 0);
+  const total = entries.reduce(
+    (sum, entry) => sum + (Number(entry.weight) || 0),
+    0
+  );
   if (total <= 0) {
     return null;
   }
@@ -505,14 +532,11 @@ function drawActionFromSoup(combat) {
       continue;
     }
     if (roll <= weight) {
-      if (ACTION_DEFINITIONS[entry.action]) {
-        return entry.action;
-      }
+      return entry.action;
     }
     roll -= weight;
   }
-  const fallback = entries.find((entry) => ACTION_DEFINITIONS[entry.action]);
-  return fallback ? fallback.action : null;
+  return entries[0]?.action || null;
 }
 
 function applyFacingEffects(combat) {
@@ -629,6 +653,10 @@ export function performPlayerAction(combat, slotIndex) {
   }
   const action = ACTION_DEFINITIONS[slot.actionKey];
   if (!action) {
+    return;
+  }
+  if (isDevEntryDisabled("action", action.key)) {
+    logCombat(combat, "That action has been disabled in developer tools.");
     return;
   }
   const apCost = getActionApCost(combat, action);
@@ -913,47 +941,56 @@ function endEnemyTurn(combat) {
 
 function generateMemoryRewardOptions(ctx, count) {
   const owned = new Set(ctx.state.playerMemories || []);
-  const pool = MEMORY_DEFINITIONS.filter((memory) => !owned.has(memory.key));
-  const fallback = pool.length >= count ? pool : MEMORY_DEFINITIONS;
+  const available = filterDevDisabledEntries("memory", MEMORY_DEFINITIONS);
+  const pool = available.filter((memory) => !owned.has(memory.key));
+  const fallback = pool.length >= count ? pool : available;
   return sampleWithoutReplacement(fallback, count);
 }
 
 function generateRelicRewardOptions(ctx, count) {
   const owned = new Set(ctx.state.playerRelics || []);
-  const pool = RELIC_DEFINITIONS.filter((relic) => !owned.has(relic.key));
-  const fallback = pool.length >= count ? pool : RELIC_DEFINITIONS;
+  const available = filterDevDisabledEntries("relic", RELIC_DEFINITIONS);
+  const pool = available.filter((relic) => !owned.has(relic.key));
+  const fallback = pool.length >= count ? pool : available;
   return sampleWithoutReplacement(fallback, count);
 }
 
 function generateConsumableRewardOptions(ctx, count) {
-  const pool = CONSUMABLE_DEFINITIONS.map((item) => ({ ...item }));
+  const enabled = filterDevDisabledEntries("consumable", CONSUMABLE_DEFINITIONS);
+  const pool = enabled.map((item) => ({ ...item }));
   return sampleWithoutReplacement(pool, count);
 }
 
 function generateMerchantDraftOptions(ctx, count) {
   const ownedMemories = new Set(ctx.state.playerMemories || []);
   const ownedRelics = new Set(ctx.state.playerRelics || []);
-  const memoryCandidates = MEMORY_DEFINITIONS.filter(
-    (memory) => !ownedMemories.has(memory.key)
-  ).map((memory) => ({ ...memory, rewardType: "memory" }));
-  const relicCandidates = RELIC_DEFINITIONS.filter(
-    (relic) => !ownedRelics.has(relic.key)
-  ).map((relic) => ({ ...relic, rewardType: "relic" }));
+  const availableMemories = filterDevDisabledEntries("memory", MEMORY_DEFINITIONS);
+  const availableRelics = filterDevDisabledEntries("relic", RELIC_DEFINITIONS);
+  const availableConsumables = filterDevDisabledEntries(
+    "consumable",
+    CONSUMABLE_DEFINITIONS
+  );
+  const memoryCandidates = availableMemories
+    .filter((memory) => !ownedMemories.has(memory.key))
+    .map((memory) => ({ ...memory, rewardType: "memory" }));
+  const relicCandidates = availableRelics
+    .filter((relic) => !ownedRelics.has(relic.key))
+    .map((relic) => ({ ...relic, rewardType: "relic" }));
   const memoryPool =
     memoryCandidates.length >= count
       ? memoryCandidates
-      : MEMORY_DEFINITIONS.map((memory) => ({
+      : availableMemories.map((memory) => ({
           ...memory,
           rewardType: "memory",
         }));
   const relicPool =
     relicCandidates.length >= count
       ? relicCandidates
-      : RELIC_DEFINITIONS.map((relic) => ({
+      : availableRelics.map((relic) => ({
           ...relic,
           rewardType: "relic",
         }));
-  const consumablePool = CONSUMABLE_DEFINITIONS.map((item) => ({
+  const consumablePool = availableConsumables.map((item) => ({
     ...item,
     rewardType: "consumable",
   }));
@@ -1667,7 +1704,11 @@ function attemptCombatConsumableDrop(combat, chancePercent) {
   if (chance < 100 && Math.random() * 100 >= chance) {
     return;
   }
-  const reward = getRandomItem(CONSUMABLE_DEFINITIONS);
+  const candidates = filterDevDisabledEntries(
+    "consumable",
+    CONSUMABLE_DEFINITIONS
+  );
+  const [reward] = sampleWithoutReplacement(candidates, 1);
   if (!reward) {
     return;
   }
@@ -1702,7 +1743,10 @@ function handleVictory(combat) {
       attemptCombatConsumableDrop(combat, 50);
     }
     if (combat.player.flags?.greedsGamblePlayed) {
-      const reward = getRandomItem(CONSUMABLE_DEFINITIONS);
+      const [reward] = sampleWithoutReplacement(
+        filterDevDisabledEntries("consumable", CONSUMABLE_DEFINITIONS),
+        1
+      );
       if (reward) {
         addConsumable(reward.key, 1, combat.ctx);
         logCombat(combat, `Greed's Gamble pays out a ${reward.name}.`);

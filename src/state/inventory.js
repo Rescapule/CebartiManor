@@ -8,6 +8,7 @@ import {
 } from "./state.js";
 import { MAX_CONSUMABLE_SLOTS } from "./config.js";
 import { CONSUMABLE_MAP, MEMORY_MAP, RELIC_MAP } from "../data/index.js";
+import { isDevEntryDisabled } from "./devtools.js";
 
 function resolveContext(ctx) {
   if (ctx && typeof ctx === "object") {
@@ -82,8 +83,12 @@ export function addConsumable(key, count = 1, ctx) {
   if (!key || count === 0) {
     return false;
   }
-  ensurePlayerConsumables();
   const context = resolveContext(ctx);
+  if (isDevEntryDisabled("consumable", key)) {
+    context.showToast?.("That consumable has been disabled.");
+    return false;
+  }
+  ensurePlayerConsumables();
   const currentTotal = getTotalConsumables();
   let success = false;
   if (count > 0) {
@@ -118,6 +123,10 @@ export function addRelic(key, ctx) {
     return false;
   }
   const context = resolveContext(ctx);
+  if (isDevEntryDisabled("relic", key)) {
+    context.showToast?.("That relic has been disabled.");
+    return false;
+  }
   if (awardRelic(key)) {
     if (context.showToast) {
       const relic = RELIC_MAP.get(key);
@@ -135,6 +144,10 @@ export function addMemoryToState(key, ctx) {
     return false;
   }
   const context = resolveContext(ctx);
+  if (isDevEntryDisabled("memory", key)) {
+    context.showToast?.("That memory has been disabled.");
+    return false;
+  }
   if (!recordMemory(key)) {
     return false;
   }
