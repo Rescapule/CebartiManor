@@ -1,4 +1,5 @@
 import { updateState } from "./state.js";
+import { isDevEntryDisabled } from "./devtools.js";
 
 const DEFAULT_PLAYER_MEMORIES = [
   "memoryBarFight",
@@ -13,8 +14,12 @@ export function ensureDefaultMemories(ctx) {
     return memories;
   }
 
+  const availableMemories = DEFAULT_PLAYER_MEMORIES.filter(
+    (key) => !isDevEntryDisabled("memory", key)
+  );
+
   const updatedState = updateState({
-    playerMemories: DEFAULT_PLAYER_MEMORIES.slice(),
+    playerMemories: availableMemories.slice(),
   });
 
   if (contextState && contextState !== updatedState) {

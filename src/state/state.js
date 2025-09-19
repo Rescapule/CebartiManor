@@ -24,6 +24,7 @@ function createBaseState(overrides = {}) {
     codexView: null,
     codexSelections: {},
     devMode: false,
+    devDisabledEntries: {},
     activeCombat: null,
     activeScreenContext: null,
     merchantDraftCost: null,

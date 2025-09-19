@@ -20,6 +20,7 @@ import {
   setCodexView,
   toggleDevMode,
 } from "../state/state.js";
+import { isDevEntryDisabled, toggleDevEntryDisabled } from "../state/devtools.js";
 import { createElement } from "./dom.js";
 
 function resolveContext(ctx) {
@@ -868,6 +869,11 @@ function renderCodexContent(target, options = {}) {
     }
 
     const isDevMode = !!state.devMode;
+    const isBestiaryView = state.codexView?.mode === "bestiary";
+    const entryDisabled =
+      entry && entry.type && entry.key
+        ? isDevEntryDisabled(entry.type, entry.key)
+        : false;
 
     function createDevEditableValue(valueText, binding) {
       if (!isDevMode || !binding) {
@@ -1014,9 +1020,46 @@ function renderCodexContent(target, options = {}) {
     }
     detail.appendChild(icon);
 
-    detail.appendChild(
-      createElement("h3", "codex-detail__name", entry.name)
-    );
+    const headerRow = createElement("div", "codex-detail__header");
+    const nameElement = createElement("h3", "codex-detail__name", entry.name);
+    if (entryDisabled) {
+      nameElement.classList.add("codex-detail__name--disabled");
+    }
+    headerRow.appendChild(nameElement);
+
+    if (isDevMode && isBestiaryView && entry.type && entry.key) {
+      const toggleButton = createElement(
+        "button",
+        "codex-dev-disable",
+        entryDisabled ? "Enable in Runs" : "Disable in Runs"
+      );
+      toggleButton.type = "button";
+      toggleButton.setAttribute("aria-pressed", String(entryDisabled));
+      toggleButton.title = entryDisabled
+        ? "Disabled entries will not appear in rewards, drafts, or inventories during runs."
+        : "Prevent this entry from appearing in rewards, drafts, or inventories during runs.";
+      toggleButton.setAttribute("aria-label", toggleButton.title);
+      if (entryDisabled) {
+        toggleButton.classList.add("codex-dev-disable--active");
+      }
+      toggleButton.addEventListener("click", () => {
+        toggleDevEntryDisabled(entry.type, entry.key);
+        refreshCodexOverlay();
+      });
+      headerRow.appendChild(toggleButton);
+    }
+
+    detail.appendChild(headerRow);
+
+    if (isBestiaryView && entryDisabled) {
+      detail.appendChild(
+        createElement(
+          "p",
+          "codex-detail__dev-note",
+          "This entry is disabled and will not appear during runs until re-enabled."
+        )
+      );
+    }
 
     if (entry.stats && entry.stats.length > 0) {
       const statsList = createElement("dl", "codex-detail__stats");
@@ -1173,13 +1216,24 @@ function renderCodexContent(target, options = {}) {
         button.type = "button";
         button.dataset.entryKey = entry.key;
         button.dataset.entryType = entry.type;
+        const devDisabled =
+          entry && entry.type && entry.key
+            ? isDevEntryDisabled(entry.type, entry.key)
+            : false;
         const tooltipParts = [entry.name];
         if (entry.summary) {
           tooltipParts.push(entry.summary);
         }
+        if (devDisabled) {
+          tooltipParts.push("Disabled");
+        }
         const tooltipText = tooltipParts.join(" — ");
         button.title = tooltipText;
         button.setAttribute("aria-label", entry.name);
+        if (devDisabled) {
+          button.classList.add("codex-icon--disabled");
+          button.dataset.devDisabled = "true";
+        }
         if (entry.spriteSrc) {
           button.classList.add("codex-icon--has-image");
           const image = document.createElement("img");

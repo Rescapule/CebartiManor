@@ -15,6 +15,7 @@ import {
 } from "../state/state.js";
 import { addGold } from "../state/inventory.js";
 import { sampleWithoutReplacement } from "../state/random.js";
+import { filterDevDisabledEntries, isDevEntryDisabled } from "../state/devtools.js";
 import { createElement } from "./dom.js";
 import { updateCombatUI } from "./combat.js";
 import { formatPassiveDescription } from "./codex.js";
@@ -43,12 +44,26 @@ function triggerResourceUpdate(ctx) {
 
 function createMemoryDraftPacks(count = 3, optionsPerPack = 3) {
   const packs = [];
-  const memoryPool = [...MEMORY_DEFINITIONS];
+  const memoryPool = filterDevDisabledEntries("memory", MEMORY_DEFINITIONS);
   for (let i = 0; i < count; i += 1) {
-    const available = sampleWithoutReplacement(memoryPool, optionsPerPack);
+    if (memoryPool.length === 0) {
+      packs.push([]);
+      continue;
+    }
+    const available =
+      memoryPool.length <= optionsPerPack
+        ? memoryPool.slice()
+        : sampleWithoutReplacement(memoryPool, optionsPerPack);
     packs.push(available.map((memory) => memory.key));
   }
   return packs;
+}
+
+export function getRequiredMemoryDraftSelections(state) {
+  const packs = Array.isArray(state?.draftPacks) ? state.draftPacks : [];
+  return packs.reduce((count, pack) => {
+    return Array.isArray(pack) && pack.length > 0 ? count + 1 : count;
+  }, 0);
 }
 
 function ensureDraftState() {
@@ -73,14 +88,24 @@ export function renderMemoryDraft(ctx) {
   ensureDraftState();
   const context = resolveContext(ctx);
   const state = context.state;
+  const requiredSelections = getRequiredMemoryDraftSelections(state);
+  const completedSelections = Array.isArray(state.playerMemories)
+    ? state.playerMemories.filter((key) => !isDevEntryDisabled("memory", key)).length
+    : 0;
 
   const container = createElement("div", "memory-draft");
+  const summaryText =
+    requiredSelections === 0
+      ? "No memory draft is required at this time."
+      : completedSelections >= requiredSelections
+      ? "Draft complete. Review your memories before continuing."
+      : requiredSelections === 1
+      ? "Draft one memory to define your starting action pool."
+      : `Draft ${requiredSelections} memories to define your starting action pool.`;
   const summary = createElement(
     "div",
     "memory-draft__summary",
-    state.playerMemories.length === state.draftPacks.length
-      ? "Draft complete. Review your memories before continuing."
-      : "Draft three memories to define your starting action pool."
+    summaryText
   );
   container.appendChild(summary);
 
@@ -118,6 +143,12 @@ function createMemoryCard(ctx, memory, packIndex) {
   card.dataset.memoryKey = memory.key;
   card.dataset.packIndex = String(packIndex);
   card.title = `${memory.name} — ${memory.description}`;
+  const devDisabled = isDevEntryDisabled("memory", memory.key);
+  if (devDisabled) {
+    card.disabled = true;
+    card.classList.add("memory-card--disabled");
+    card.title = `${memory.name} is disabled in developer mode.`;
+  }
 
   const header = createElement("div", "memory-card__header");
   const name = createElement("span", "memory-card__name", memory.name);
@@ -147,16 +178,18 @@ function createMemoryCard(ctx, memory, packIndex) {
     card.classList.add("is-selected");
   }
 
-  card.addEventListener("click", () => {
-    const state = getState();
-    const selectedDrafts = state.selectedDrafts.slice();
-    selectedDrafts[packIndex] = memory.key;
-    updateState({
-      selectedDrafts,
-      playerMemories: selectedDrafts.filter(Boolean),
+  if (!devDisabled) {
+    card.addEventListener("click", () => {
+      const state = getState();
+      const selectedDrafts = state.selectedDrafts.slice();
+      selectedDrafts[packIndex] = memory.key;
+      updateState({
+        selectedDrafts,
+        playerMemories: selectedDrafts.filter(Boolean),
+      });
+      updateMemoryDraftSelection(ctx);
     });
-    updateMemoryDraftSelection(ctx);
-  });
+  }
 
   return card;
 }
@@ -164,12 +197,33 @@ function createMemoryCard(ctx, memory, packIndex) {
 export function updateMemoryDraftSelection(ctx) {
   const context = resolveContext(ctx);
   const state = context.state;
+  const selectedDrafts = Array.isArray(state.selectedDrafts)
+    ? state.selectedDrafts
+    : [];
+  const sanitizedSelections = selectedDrafts.map((key) =>
+    key && !isDevEntryDisabled("memory", key) ? key : null
+  );
+  const needsUpdate = sanitizedSelections.some(
+    (key, index) => key !== selectedDrafts[index]
+  );
+  if (needsUpdate) {
+    updateState({
+      selectedDrafts: sanitizedSelections,
+      playerMemories: sanitizedSelections.filter(Boolean),
+    });
+    state.selectedDrafts = sanitizedSelections;
+    state.playerMemories = sanitizedSelections.filter(Boolean);
+  }
+  const effectiveSelections = needsUpdate
+    ? sanitizedSelections
+    : selectedDrafts;
+  const requiredSelections = getRequiredMemoryDraftSelections(state);
 
   const draftContainers = document.querySelectorAll(".memory-card");
   draftContainers.forEach((card) => {
     const packIndex = Number(card.dataset.packIndex);
     const key = card.dataset.memoryKey;
-    if (state.selectedDrafts[packIndex] === key) {
+    if (effectiveSelections[packIndex] === key) {
       card.classList.add("is-selected");
     } else {
       card.classList.remove("is-selected");
@@ -178,7 +232,7 @@ export function updateMemoryDraftSelection(ctx) {
 
   const chosenItems = document.querySelectorAll(".memory-draft__chosen-item");
   chosenItems.forEach((item, index) => {
-    const key = state.selectedDrafts[index];
+    const key = effectiveSelections[index];
     if (key) {
       const memory = MEMORY_MAP.get(key);
       item.textContent = memory ? memory.name : "Unknown Memory";
@@ -191,10 +245,15 @@ export function updateMemoryDraftSelection(ctx) {
 
   const summary = document.querySelector(".memory-draft__summary");
   if (summary) {
-    if (state.playerMemories.length === state.draftPacks.length) {
+    if (requiredSelections === 0) {
+      summary.textContent = "No memory draft is required at this time.";
+    } else if (state.playerMemories.length >= requiredSelections) {
       summary.textContent = "Draft complete. Review your memories before continuing.";
     } else {
-      summary.textContent = "Draft three memories to define your starting action pool.";
+      summary.textContent =
+        requiredSelections === 1
+          ? "Draft one memory to define your starting action pool."
+          : `Draft ${requiredSelections} memories to define your starting action pool.`;
     }
   }
 
@@ -203,7 +262,7 @@ export function updateMemoryDraftSelection(ctx) {
   );
   if (continueButton) {
     continueButton.disabled =
-      state.playerMemories.length !== state.draftPacks.length;
+      state.playerMemories.length < requiredSelections;
   }
 }
 
@@ -246,12 +305,19 @@ export function renderConsumableDisplay(container, ctx) {
     const hiddenLabel = createElement("span", "sr-only", `Use ${item.name}`);
     button.appendChild(hiddenLabel);
 
-    button.addEventListener("click", () => {
-      const confirmText = `Use ${item.name}?`;
-      if (window.confirm(confirmText)) {
-        useConsumable(context, item.key);
-      }
-    });
+    const devDisabled = isDevEntryDisabled("consumable", item.key);
+    if (devDisabled) {
+      button.disabled = true;
+      button.classList.add("consumable-slot--disabled");
+      button.title = `${item.name} is disabled in developer mode.`;
+    } else {
+      button.addEventListener("click", () => {
+        const confirmText = `Use ${item.name}?`;
+        if (window.confirm(confirmText)) {
+          useConsumable(context, item.key);
+        }
+      });
+    }
 
     slotRow.appendChild(button);
   });
@@ -271,6 +337,10 @@ function useConsumable(ctx, key) {
   const consumables = ensurePlayerConsumables();
   if (!key || !consumables[key]) {
     context.showToast?.("No charges of that consumable remain.");
+    return;
+  }
+  if (isDevEntryDisabled("consumable", key)) {
+    context.showToast?.("That consumable is disabled.");
     return;
   }
   const consumable = CONSUMABLE_MAP.get(key);
