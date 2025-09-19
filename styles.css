@@ -879,7 +879,7 @@ button {
   transform: translateY(-1px);
 }
 
-.codex-dev-toggle {
+.codex-dev-toggle { 
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -899,6 +899,46 @@ button {
   background: rgba(214, 179, 112, 0.25);
   outline: none;
   transform: translateY(-1px);
+}
+
+.codex-dev-disable {
+  border: 1px solid rgba(255, 214, 102, 0.75);
+  background: rgba(255, 214, 102, 0.2);
+  color: inherit;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: background 160ms ease, transform 160ms ease,
+    box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.codex-dev-disable::before {
+  content: "⚙";
+  font-size: 0.95rem;
+}
+
+.codex-dev-disable:hover,
+.codex-dev-disable:focus-visible {
+  background: rgba(255, 214, 102, 0.35);
+  border-color: rgba(255, 214, 102, 0.95);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.codex-dev-disable--active {
+  background: rgba(220, 70, 70, 0.25);
+  border-color: rgba(255, 120, 120, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 120, 120, 0.35);
+}
+
+.codex-dev-disable--active::before {
+  content: "⛔";
 }
 
 .codex-dev-toggle__logo {
@@ -1216,9 +1256,17 @@ button {
   overflow: hidden;
 }
 
+.codex-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .codex-detail__name {
   font-size: clamp(1.3rem, 2.6vw, 1.75rem);
   margin: 0;
+  flex: 1 1 auto;
 }
 
 .codex-detail__meta {

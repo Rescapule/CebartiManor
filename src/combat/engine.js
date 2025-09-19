@@ -31,7 +31,7 @@ import {
   MERCHANT_BASE_DRAFT_COST,
   MERCHANT_DRAFT_COST_INCREMENT,
 } from '../state/config.js';
-import { sampleWithoutReplacement } from '../state/random.js';
+import { getRandomItem, sampleWithoutReplacement } from '../state/random.js';
 import { filterDevDisabledEntries, isDevEntryDisabled } from '../state/devtools.js';
 import { showFloatingText, updateCombatLog, updateCombatUI } from '../ui/combat.js';
 import { createElement } from '../ui/dom.js';
@@ -1708,7 +1708,7 @@ function attemptCombatConsumableDrop(combat, chancePercent) {
     "consumable",
     CONSUMABLE_DEFINITIONS
   );
-  const [reward] = sampleWithoutReplacement(candidates, 1);
+  const reward = getRandomItem(candidates);
   if (!reward) {
     return;
   }
