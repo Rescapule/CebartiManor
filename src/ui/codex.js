@@ -20,7 +20,12 @@ import {
   setCodexView,
   toggleDevMode,
 } from "../state/state.js";
-import { isDevEntryDisabled, toggleDevEntryDisabled } from "../state/devtools.js";
+import {
+  getDevDisabledKeys,
+  isDevEntryDisabled,
+  toggleDevEntryDisabled,
+  toggleDevEntriesForType,
+} from "../state/devtools.js";
 import { createElement } from "./dom.js";
 
 function resolveContext(ctx) {
@@ -1192,9 +1197,36 @@ function renderCodexContent(target, options = {}) {
     );
     const titleText =
       section.title || sectionLabels[section.type] || formatTitleCase(section.type);
-    sectionElement.appendChild(
-      createElement("h3", "codex-section__title", titleText)
-    );
+    const heading = createElement("div", "codex-section__heading");
+    const titleElement = createElement("h3", "codex-section__title", titleText);
+    heading.appendChild(titleElement);
+
+    const isDevMode = !!state.devMode;
+    const isBestiaryView = state.codexView?.mode === "bestiary";
+    const sectionKeys = entries
+      .map((entry) => (entry && typeof entry.key === "string" ? entry.key : ""))
+      .filter((key) => key);
+    if (isDevMode && isBestiaryView && sectionKeys.length > 0) {
+      const disabledKeys = getDevDisabledKeys(section.type);
+      const allDisabled = sectionKeys.every((key) => disabledKeys.includes(key));
+      const toggleButton = createElement(
+        "button",
+        "codex-dev-group-toggle",
+        allDisabled ? "Enable All" : "Disable All"
+      );
+      toggleButton.type = "button";
+      toggleButton.setAttribute("aria-pressed", String(allDisabled));
+      toggleButton.title = allDisabled
+        ? "Enable every entry in this category for runs."
+        : "Disable every entry in this category for runs.";
+      toggleButton.addEventListener("click", () => {
+        toggleDevEntriesForType(section.type, sectionKeys);
+        refreshCodexOverlay();
+      });
+      heading.appendChild(toggleButton);
+    }
+
+    sectionElement.appendChild(heading);
 
     const iconRow = createElement("div", "codex-section__icons");
     if (entries.length === 0) {

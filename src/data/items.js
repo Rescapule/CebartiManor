@@ -41,6 +41,13 @@ export const RELIC_DEFINITIONS = [
     passive: { throwAppliesVulnerable: 1 },
   },
   {
+    key: "relicSequencersDial",
+    name: "Sequencer's Dial",
+    emotion: "Anger",
+    description: "Your action bar holds an additional slot.",
+    passive: { actionSlotBonus: 1 },
+  },
+  {
     key: "relicPorcelainRat",
     name: "Porcelain Rat Figurine",
     emotion: "Fear",
@@ -78,6 +85,13 @@ export const RELIC_DEFINITIONS = [
     passive: { armorGainNoAttack: 2 },
   },
   {
+    key: "relicWardweaversSpindle",
+    name: "Wardweaver's Spindle",
+    emotion: "Fear",
+    description: "Whenever an action cycles in its chain, gain Block (4).",
+    passive: { cycleBlockGain: 4 },
+  },
+  {
     key: "relicLanternFestival",
     name: "Lantern of Festival Glass",
     emotion: "Joy",
@@ -90,6 +104,13 @@ export const RELIC_DEFINITIONS = [
     emotion: "Joy",
     description: "Spark deals +3 damage if you played a buff this turn.",
     passive: { sparkBuffBonus: 3 },
+  },
+  {
+    key: "relicCarnivalCartridge",
+    name: "Carnival Cartridge",
+    emotion: "Joy",
+    description: "Carry two additional consumables in your satchel.",
+    passive: { consumableSlotBonus: 2 },
   },
   {
     key: "relicGoldenLyre",
@@ -111,6 +132,13 @@ export const RELIC_DEFINITIONS = [
     emotion: "Joy",
     description: "The first buff you play each combat is duplicated.",
     passive: { firstBuffDuplicated: true },
+  },
+  {
+    key: "relicCuratorsCompass",
+    name: "Curator's Compass",
+    emotion: "Joy",
+    description: "Drafts present one additional option to choose from.",
+    passive: { draftOptionBonus: 1 },
   },
   {
     key: "relicDirgeBell",
@@ -146,6 +174,20 @@ export const RELIC_DEFINITIONS = [
     emotion: "Sadness",
     description: "If you played Breakthrough this combat, gain +15 gold at victory.",
     passive: { breakthroughGoldReward: 15 },
+  },
+  {
+    key: "relicGildedReliquary",
+    name: "Gilded Reliquary",
+    emotion: "Sadness",
+    description: "Whenever you claim a new memory, gain 10 gold.",
+    passive: { memoryPickupGold: 10 },
+  },
+  {
+    key: "relicBrokerSigil",
+    name: "Broker's Sigil",
+    emotion: "Sadness",
+    description: "Merchant activations cost half as much (rounded to the nearest gold).",
+    passive: { merchantCostMultiplier: 0.5 },
   },
 ];
 
