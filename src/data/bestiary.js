@@ -51,4 +51,14 @@ export const BESTIARY_PAGES = [
       },
     ],
   },
+  {
+    key: "events",
+    title: "Manor Events",
+    sections: [
+      {
+        type: "event",
+        emptyText: "No manor events have been chronicled.",
+      },
+    ],
+  },
 ];

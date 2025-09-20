@@ -5,6 +5,8 @@ import {
   ensurePlayerConsumables,
   getState,
   recordMemory,
+  removeRelic as removeRelicState,
+  removeMemory as removeMemoryState,
 } from "./state.js";
 import { MAX_CONSUMABLE_SLOTS } from "./config.js";
 import {
@@ -144,6 +146,25 @@ export function addRelic(key, ctx) {
   return false;
 }
 
+export function removeRelic(key, ctx) {
+  if (!key) {
+    return false;
+  }
+  const context = resolveContext(ctx);
+  if (!removeRelicState(key)) {
+    context.showToast?.("That relic is no longer in your possession.");
+    return false;
+  }
+  const relic = RELIC_MAP.get(key);
+  if (context.showToast) {
+    context.showToast(
+      `The manor claims your relic: ${relic?.name || key}.`
+    );
+  }
+  notifyResourceUpdate(context);
+  return true;
+}
+
 export function addMemoryToState(key, ctx) {
   if (!key) {
     return false;
@@ -166,5 +187,24 @@ export function addMemoryToState(key, ctx) {
   if (memoryGold > 0) {
     addGold(memoryGold, context);
   }
+  return true;
+}
+
+export function removeMemory(key, ctx) {
+  if (!key) {
+    return false;
+  }
+  const context = resolveContext(ctx);
+  if (!removeMemoryState(key)) {
+    context.showToast?.("That memory is already lost.");
+    return false;
+  }
+  const memory = MEMORY_MAP.get(key);
+  if (context.showToast) {
+    context.showToast(
+      `The manor erases your memory: ${memory?.name || key}.`
+    );
+  }
+  notifyResourceUpdate(context);
   return true;
 }

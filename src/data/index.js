@@ -5,3 +5,4 @@ export * from "./items.js";
 export * from "./memories.js";
 export * from "./enemies.js";
 export * from "./rooms.js";
+export * from "./events.js";
