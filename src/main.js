@@ -158,7 +158,7 @@ import { initializeDebugLogUI } from "./ui/debug-log.js";
   }
 
   function createDoorChoice(label, extraClasses = [], options = {}) {
-    const { button, iconElement, lockElement } = createDoorButton(
+    const { button, iconElement, lockElement, frame } = createDoorButton(
       label,
       extraClasses,
       options
@@ -178,7 +178,14 @@ import { initializeDebugLogUI } from "./ui/debug-log.js";
       wrapper.appendChild(detailElement);
     }
 
-    return { element: wrapper, button, labelElement, iconElement, lockElement };
+    return {
+      element: wrapper,
+      button,
+      labelElement,
+      iconElement,
+      lockElement,
+      frame,
+    };
   }
 
   const screenHelpers = {

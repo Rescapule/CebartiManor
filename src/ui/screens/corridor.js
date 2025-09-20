@@ -142,6 +142,7 @@ const corridorScreen = {
           iconElement,
           labelElement,
           lockElement,
+          frame,
         } = choice;
 
         if (iconElement) {
@@ -166,6 +167,38 @@ const corridorScreen = {
         doorButton.dataset.enhanced = enhanced ? "true" : "false";
         if (category.key) {
           doorButton.dataset.roomType = category.key;
+        }
+
+        if (ctx.state?.devMode && isLocked && frame) {
+          const devButton = createElement(
+            "button",
+            "door-button__dev-toggle",
+            ""
+          );
+          devButton.type = "button";
+          devButton.setAttribute("aria-label", "Unlock door in developer mode");
+          devButton.title = "Developer override: unlock without a key.";
+          const logo = document.createElement("img");
+          logo.src = "logofull.png";
+          logo.alt = "";
+          logo.loading = "lazy";
+          logo.decoding = "async";
+          logo.className = "door-button__dev-icon";
+          devButton.appendChild(logo);
+          devButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            event.preventDefault();
+            if (!isLocked) {
+              return;
+            }
+            isLocked = false;
+            doorButton.dataset.locked = "false";
+            doorButton.classList.remove("door-button--locked");
+            devButton.disabled = true;
+            devButton.classList.add("door-button__dev-toggle--used");
+            ctx.showToast?.("Developer override unlocks the door.");
+          });
+          frame.appendChild(devButton);
         }
 
         doorButton.addEventListener("click", async () => {

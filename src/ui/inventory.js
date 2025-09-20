@@ -19,6 +19,10 @@ import { filterDevDisabledEntries, isDevEntryDisabled } from "../state/devtools.
 import { createElement } from "./dom.js";
 import { updateCombatUI } from "./combat.js";
 import { formatPassiveDescription } from "./codex.js";
+import {
+  getConsumableSlotLimit,
+  getPlayerPassiveSummary,
+} from "../state/passives.js";
 
 function resolveContext(ctx) {
   if (ctx && typeof ctx === "object") {
@@ -69,9 +73,12 @@ export function getRequiredMemoryDraftSelections(state) {
 function ensureDraftState() {
   const state = getState();
   const packCount = 3;
+  const passives = getPlayerPassiveSummary(state);
+  const optionBonus = Math.max(0, Math.round(passives.draftOptionBonus || 0));
+  const optionsPerPack = Math.max(1, 3 + optionBonus);
   if (!Array.isArray(state.draftPacks) || state.draftPacks.length === 0) {
     updateState({
-      draftPacks: createMemoryDraftPacks(packCount, 3),
+      draftPacks: createMemoryDraftPacks(packCount, optionsPerPack),
       selectedDrafts: new Array(packCount).fill(null),
       playerMemories: [],
     });
@@ -276,12 +283,13 @@ export function renderConsumableDisplay(container, ctx) {
 
   const label = createElement("span", "run-resources__label", "Consumables");
   const slotRow = createElement("div", "consumable-slots");
+  const slotLimit = getConsumableSlotLimit(state, MAX_CONSUMABLE_SLOTS);
 
   const items = [];
   CONSUMABLE_DEFINITIONS.forEach((definition) => {
     const count = Number(state.playerConsumables?.[definition.key] || 0);
     for (let i = 0; i < count; i += 1) {
-      if (items.length < MAX_CONSUMABLE_SLOTS) {
+      if (items.length < slotLimit) {
         items.push(definition);
       }
     }
@@ -322,7 +330,7 @@ export function renderConsumableDisplay(container, ctx) {
     slotRow.appendChild(button);
   });
 
-  const emptySlots = Math.max(MAX_CONSUMABLE_SLOTS - items.length, 0);
+  const emptySlots = Math.max(slotLimit - items.length, 0);
   for (let i = 0; i < emptySlots; i += 1) {
     slotRow.appendChild(
       createElement("span", "consumable-slot consumable-slot--empty")

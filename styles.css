@@ -465,6 +465,47 @@ button {
   z-index: 3;
 }
 
+.door-button__dev-toggle {
+  position: absolute;
+  bottom: -0.6rem;
+  right: -0.6rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 179, 112, 0.55);
+  background: rgba(12, 6, 3, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, opacity 160ms ease;
+  z-index: 4;
+}
+
+.door-button__dev-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+
+.door-button__dev-toggle:hover,
+.door-button__dev-toggle:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(255, 233, 189, 0.85);
+  box-shadow: 0 12px 18px rgba(0, 0, 0, 0.35);
+  outline: none;
+}
+
+.door-button__dev-toggle--used {
+  opacity: 0.35;
+  cursor: default;
+  box-shadow: none;
+  transform: none !important;
+}
+
 .door-button:focus-visible {
   outline: 3px solid rgba(255, 233, 189, 0.9);
   outline-offset: 6px;
@@ -747,6 +788,51 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.merchant-panel__status {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 233, 189, 0.6);
+}
+
+.merchant-panel__message {
+  margin: 0;
+  font-size: 0.95rem;
+  color: rgba(255, 233, 189, 0.85);
+}
+
+.merchant-panel__empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--color-muted);
+}
+
+.merchant-removal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.merchant-removal__option {
+  background: rgba(12, 6, 3, 0.6);
+  border: 1px solid rgba(214, 179, 112, 0.35);
+  border-radius: 12px;
+  color: inherit;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.merchant-removal__option:hover,
+.merchant-removal__option:focus-visible {
+  border-color: rgba(255, 233, 189, 0.85);
+  background: rgba(20, 11, 6, 0.78);
+  transform: translateY(-1px);
+  outline: none;
 }
 
 
@@ -1080,9 +1166,43 @@ button {
   gap: clamp(1rem, 2.5vw, 1.5rem);
 }
 
+.codex-section__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .codex-section__title {
+  margin: 0;
   font-size: 1rem;
   letter-spacing: 0.08em;
+}
+
+.codex-dev-group-toggle {
+  margin-left: auto;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 179, 112, 0.45);
+  background: rgba(12, 6, 3, 0.7);
+  color: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.codex-dev-group-toggle[aria-pressed="true"] {
+  border-color: rgba(255, 206, 120, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 206, 120, 0.25);
+}
+
+.codex-dev-group-toggle:hover,
+.codex-dev-group-toggle:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(255, 233, 189, 0.85);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
+  outline: none;
 }
 
 .codex-section__icons {
@@ -1854,6 +1974,75 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.combat-sidebar__summary-text {
+  margin: 0;
+}
+
+.combat-dev-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 179, 112, 0.45);
+  background: rgba(12, 6, 3, 0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  padding: 0.35rem;
+}
+
+.combat-dev-button__icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+  pointer-events: none;
+}
+
+.combat-dev-button:hover,
+.combat-dev-button:focus-visible {
+  transform: translateY(-2px);
+  border-color: rgba(255, 233, 189, 0.85);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.35);
+  outline: none;
+}
+
+.combat-dev-button--burn.is-active {
+  border-color: rgba(255, 206, 120, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 206, 120, 0.35);
+}
+
+.combat-action-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.combat-action-bar--burn-mode {
+  border: 1px dashed rgba(255, 206, 120, 0.5);
+  border-radius: 14px;
+  padding: 0.4rem;
+}
+
+.action-bar--burn-mode .action-button {
+  border-color: rgba(255, 206, 120, 0.35);
+}
+
+.action-button--dev-burn {
+  border-color: rgba(255, 206, 120, 0.8);
+  box-shadow: 0 0 0 3px rgba(255, 206, 120, 0.25);
+}
+
+.action-button--dev-burn:hover,
+.action-button--dev-burn:focus-visible {
+  border-color: rgba(255, 233, 189, 0.95);
 }
 
 .action-bar {

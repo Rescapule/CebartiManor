@@ -7,6 +7,10 @@ import {
   recordMemory,
 } from "./state.js";
 import { MAX_CONSUMABLE_SLOTS } from "./config.js";
+import {
+  getConsumableSlotLimit,
+  getPlayerPassiveSummary,
+} from "./passives.js";
 import { CONSUMABLE_MAP, MEMORY_MAP, RELIC_MAP } from "../data/index.js";
 import { isDevEntryDisabled } from "./devtools.js";
 
@@ -92,7 +96,8 @@ export function addConsumable(key, count = 1, ctx) {
   const currentTotal = getTotalConsumables();
   let success = false;
   if (count > 0) {
-    const remainingSlots = MAX_CONSUMABLE_SLOTS - currentTotal;
+    const capacity = getConsumableSlotLimit(context.state, MAX_CONSUMABLE_SLOTS);
+    const remainingSlots = capacity - currentTotal;
     if (remainingSlots <= 0) {
       context.showToast?.("Your satchel is full.");
       return false;
@@ -156,5 +161,10 @@ export function addMemoryToState(key, ctx) {
     context.showToast(`A new memory surfaces: ${memory?.name || key}.`);
   }
   notifyResourceUpdate(context);
+  const passiveSummary = getPlayerPassiveSummary();
+  const memoryGold = Math.max(0, Math.round(passiveSummary.memoryPickupGold || 0));
+  if (memoryGold > 0) {
+    addGold(memoryGold, context);
+  }
   return true;
 }

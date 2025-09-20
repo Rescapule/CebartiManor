@@ -16,6 +16,7 @@ import {
 } from '../data/index.js';
 import {
   clearActiveCombat,
+  getState,
   setEssenceValues,
   updateState,
 } from '../state/state.js';
@@ -33,230 +34,22 @@ import {
 } from '../state/config.js';
 import { getRandomItem, sampleWithoutReplacement } from '../state/random.js';
 import { filterDevDisabledEntries, isDevEntryDisabled } from '../state/devtools.js';
+import {
+  combinePassiveSummaries,
+  getPlayerPassiveSummary,
+  summarizeMemoryPassives,
+  summarizeRelicPassives,
+} from '../state/passives.js';
 import { showFloatingText, updateCombatLog, updateCombatUI } from '../ui/combat.js';
 import { createElement } from '../ui/dom.js';
 
-function createPassiveSummary() {
-  return {
-    bleedBonus: 0,
-    bleedMultiplier: 1,
-    bleedHealFraction: 0,
-    apCarryoverBonus: 0,
-    dirgeCostReduction: 0,
-    roarAppliesVulnerable: false,
-    buffCostReductionWhileFaceUp: false,
-    songEssenceRegen: 0,
-    laughterDamageBonus: 0,
-    emptySlotCritBonus: 0,
-    buffGrantsEssenceRegen: 0,
-    strikeDamageBonus: 0,
-    grappleDiscountAfterStrike: 0,
-    grappleRestrainedBonus: 0,
-    strikeFaceUpCritBonus: 0,
-    throwAppliesVulnerable: 0,
-    blockThresholdDaze: 0,
-    blockThresholdDazeStacks: 0,
-    guardBlockBonus: 0,
-    braceRetaliate: 0,
-    counterBlockedBonusDamage: 0,
-    armorGainNoAttack: 0,
-    sparkBuffBonus: 0,
-    festivalLightCritBonus: 0,
-    elationEndHeal: 0,
-    firstBuffDuplicated: false,
-    witherAppliesExtraBleed: 0,
-    breakthroughFatigueDiscount: 0,
-    fatigueApBonus: 0,
-    burdenFaceUpArmor: 0,
-    breakthroughGoldReward: 0,
-  };
-}
-
-function summarizeMemoryPassives(memoryKeys = []) {
-  const summary = createPassiveSummary();
-  memoryKeys.forEach((key) => {
-    if (isDevEntryDisabled("memory", key)) {
-      return;
-    }
-    const memory = MEMORY_MAP.get(key);
-    if (!memory || !memory.passive) {
-      return;
-    }
-    const passive = memory.passive;
-    if (typeof passive.bleedBonus === "number") {
-      summary.bleedBonus += passive.bleedBonus;
-    }
-    if (typeof passive.apCarryoverBonus === "number") {
-      summary.apCarryoverBonus += passive.apCarryoverBonus;
-    }
-    if (typeof passive.dirgeCostReduction === "number") {
-      summary.dirgeCostReduction += passive.dirgeCostReduction;
-    }
-    if (passive.roarAppliesVulnerable) {
-      summary.roarAppliesVulnerable = true;
-    }
-    if (passive.buffCostReductionWhileFaceUp) {
-      summary.buffCostReductionWhileFaceUp = true;
-    }
-    if (typeof passive.songEssenceRegen === "number") {
-      summary.songEssenceRegen += passive.songEssenceRegen;
-    }
-    if (typeof passive.laughterDamageBonus === "number") {
-      summary.laughterDamageBonus += passive.laughterDamageBonus;
-    }
-    if (typeof passive.emptySlotCritBonus === "number") {
-      summary.emptySlotCritBonus += passive.emptySlotCritBonus;
-    }
-  });
-  return summary;
-}
-
-function summarizeRelicPassives(relicKeys = []) {
-  const summary = createPassiveSummary();
-  relicKeys.forEach((key) => {
-    if (isDevEntryDisabled("relic", key)) {
-      return;
-    }
-    const relic = RELIC_MAP.get(key);
-    if (!relic || !relic.passive) {
-      return;
-    }
-    const passive = relic.passive;
-    if (typeof passive.bleedBonus === "number") {
-      summary.bleedBonus += passive.bleedBonus;
-    }
-    if (typeof passive.buffGrantsEssenceRegen === "number") {
-      summary.buffGrantsEssenceRegen += passive.buffGrantsEssenceRegen;
-    }
-    if (typeof passive.bleedMultiplier === "number") {
-      summary.bleedMultiplier *= passive.bleedMultiplier;
-    }
-    if (typeof passive.bleedHealFraction === "number") {
-      summary.bleedHealFraction += passive.bleedHealFraction;
-    }
-    if (typeof passive.strikeDamageBonus === "number") {
-      summary.strikeDamageBonus += passive.strikeDamageBonus;
-    }
-    if (typeof passive.grappleDiscountAfterStrike === "number") {
-      summary.grappleDiscountAfterStrike += passive.grappleDiscountAfterStrike;
-    }
-    if (typeof passive.grappleRestrainedBonus === "number") {
-      summary.grappleRestrainedBonus += passive.grappleRestrainedBonus;
-    }
-    if (typeof passive.strikeFaceUpCritBonus === "number") {
-      summary.strikeFaceUpCritBonus += passive.strikeFaceUpCritBonus;
-    }
-    if (typeof passive.throwAppliesVulnerable === "number") {
-      summary.throwAppliesVulnerable += passive.throwAppliesVulnerable;
-    }
-    if (typeof passive.blockThresholdDaze === "number" && passive.blockThresholdDaze > 0) {
-      summary.blockThresholdDaze =
-        summary.blockThresholdDaze > 0
-          ? Math.min(summary.blockThresholdDaze, passive.blockThresholdDaze)
-          : passive.blockThresholdDaze;
-    }
-    if (typeof passive.blockThresholdDazeStacks === "number") {
-      summary.blockThresholdDazeStacks += passive.blockThresholdDazeStacks;
-    }
-    if (typeof passive.guardBlockBonus === "number") {
-      summary.guardBlockBonus += passive.guardBlockBonus;
-    }
-    if (typeof passive.braceRetaliate === "number") {
-      summary.braceRetaliate += passive.braceRetaliate;
-    }
-    if (typeof passive.counterBlockedBonusDamage === "number") {
-      summary.counterBlockedBonusDamage += passive.counterBlockedBonusDamage;
-    }
-    if (typeof passive.armorGainNoAttack === "number") {
-      summary.armorGainNoAttack += passive.armorGainNoAttack;
-    }
-    if (typeof passive.sparkBuffBonus === "number") {
-      summary.sparkBuffBonus += passive.sparkBuffBonus;
-    }
-    if (typeof passive.festivalLightCritBonus === "number") {
-      summary.festivalLightCritBonus += passive.festivalLightCritBonus;
-    }
-    if (typeof passive.elationEndHeal === "number") {
-      summary.elationEndHeal += passive.elationEndHeal;
-    }
-    if (passive.firstBuffDuplicated) {
-      summary.firstBuffDuplicated = true;
-    }
-    if (typeof passive.witherAppliesExtraBleed === "number") {
-      summary.witherAppliesExtraBleed += passive.witherAppliesExtraBleed;
-    }
-    if (typeof passive.breakthroughFatigueDiscount === "number") {
-      summary.breakthroughFatigueDiscount += passive.breakthroughFatigueDiscount;
-    }
-    if (typeof passive.fatigueApBonus === "number") {
-      summary.fatigueApBonus += passive.fatigueApBonus;
-    }
-    if (typeof passive.burdenFaceUpArmor === "number") {
-      summary.burdenFaceUpArmor += passive.burdenFaceUpArmor;
-    }
-    if (typeof passive.breakthroughGoldReward === "number") {
-      summary.breakthroughGoldReward += passive.breakthroughGoldReward;
-    }
-  });
-  return summary;
-}
-
-function combinePassiveSummaries(memorySummary, relicSummary) {
-  const combined = createPassiveSummary();
-  const numericKeys = [
-    "bleedBonus",
-    "apCarryoverBonus",
-    "dirgeCostReduction",
-    "songEssenceRegen",
-    "laughterDamageBonus",
-    "emptySlotCritBonus",
-    "buffGrantsEssenceRegen",
-    "strikeDamageBonus",
-    "grappleDiscountAfterStrike",
-    "grappleRestrainedBonus",
-    "strikeFaceUpCritBonus",
-    "throwAppliesVulnerable",
-    "blockThresholdDazeStacks",
-    "guardBlockBonus",
-    "braceRetaliate",
-    "counterBlockedBonusDamage",
-    "armorGainNoAttack",
-    "sparkBuffBonus",
-    "festivalLightCritBonus",
-    "elationEndHeal",
-    "witherAppliesExtraBleed",
-    "breakthroughFatigueDiscount",
-    "fatigueApBonus",
-    "burdenFaceUpArmor",
-    "breakthroughGoldReward",
-  ];
-  numericKeys.forEach((key) => {
-    combined[key] =
-      (combined[key] || 0) + (memorySummary[key] || 0) + (relicSummary[key] || 0);
-  });
-  combined.bleedMultiplier =
-    (memorySummary.bleedMultiplier || 1) * (relicSummary.bleedMultiplier || 1);
-  combined.bleedHealFraction =
-    (memorySummary.bleedHealFraction || 0) + (relicSummary.bleedHealFraction || 0);
-  combined.roarAppliesVulnerable = Boolean(
-    memorySummary.roarAppliesVulnerable || relicSummary.roarAppliesVulnerable
-  );
-  combined.buffCostReductionWhileFaceUp = Boolean(
-    memorySummary.buffCostReductionWhileFaceUp ||
-      relicSummary.buffCostReductionWhileFaceUp
-  );
-  combined.firstBuffDuplicated = Boolean(
-    memorySummary.firstBuffDuplicated || relicSummary.firstBuffDuplicated
-  );
-  const blockThresholds = [
-    memorySummary.blockThresholdDaze,
-    relicSummary.blockThresholdDaze,
-  ].filter((value) => typeof value === "number" && value > 0);
-  combined.blockThresholdDaze = blockThresholds.length
-    ? Math.min(...blockThresholds)
-    : 0;
-  return combined;
-}
+const MERCHANT_SPECIALTIES = {
+  bellringer: 'memory',
+  candleman: 'memory',
+  collector: 'consumable',
+  helenCebarti: 'mixed',
+  ragpicker: 'relic',
+};
 
 function buildActionSoupFromMemories(memoryKeys = []) {
   const weights = new Map();
@@ -346,6 +139,9 @@ export function createCombatState(ctx, { encounterType, encounter, room }) {
   const relicPassives = summarizeRelicPassives(relicKeys);
   const passives = combinePassiveSummaries(memoryPassives, relicPassives);
   const soup = buildActionSoupFromMemories(memoryKeys);
+  const baseSlotCount = 4;
+  const slotBonus = Math.max(0, Math.round(passives.actionSlotBonus || 0));
+  const slotCount = Math.max(1, baseSlotCount + slotBonus);
 
   const player = {
     id: "player",
@@ -411,7 +207,7 @@ export function createCombatState(ctx, { encounterType, encounter, room }) {
     player,
     enemy,
     soup,
-    actionSlots: [null, null, null, null],
+    actionSlots: new Array(slotCount).fill(null),
     log: [],
     round: 1,
     turn: "player",
@@ -466,28 +262,58 @@ function startPlayerTurn(combat) {
 }
 
 function refreshActionSlots(combat) {
-  combat.actionSlots = combat.actionSlots || [null, null, null, null];
-  for (let i = 0; i < combat.actionSlots.length; i += 1) {
-    const slot = combat.actionSlots[i];
+  const passives = combat?.player?.passives || {};
+  const baseSlots = 4;
+  const bonus = Math.max(0, Math.round(passives.actionSlotBonus || 0));
+  const desiredCount = Math.max(1, baseSlots + bonus);
+  const currentSlots = Array.isArray(combat.actionSlots)
+    ? combat.actionSlots.slice(0, desiredCount)
+    : [];
+  while (currentSlots.length < desiredCount) {
+    currentSlots.push(null);
+  }
+  for (let i = 0; i < currentSlots.length; i += 1) {
+    const slot = currentSlots[i];
     if (!slot) {
       continue;
     }
     if (slot.retained && !slot.consumed && slot.actionKey) {
       continue;
     }
-    combat.actionSlots[i] = null;
+    currentSlots[i] = null;
   }
 
-  for (let i = 0; i < combat.actionSlots.length; i += 1) {
-    if (combat.actionSlots[i]) {
+  for (let i = 0; i < currentSlots.length; i += 1) {
+    if (currentSlots[i]) {
       continue;
     }
     const actionKey = drawActionFromSoup(combat);
     if (!actionKey) {
       continue;
     }
-    combat.actionSlots[i] = createActionSlot(actionKey);
+    currentSlots[i] = createActionSlot(actionKey);
   }
+  combat.actionSlots = currentSlots;
+}
+
+export function burnActionSlot(combat, index, options = {}) {
+  if (!combat || !Array.isArray(combat.actionSlots)) {
+    return false;
+  }
+  const slotIndex = Number(index);
+  if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= combat.actionSlots.length) {
+    return false;
+  }
+  combat.actionSlots[slotIndex] = null;
+  const actionKey = drawActionFromSoup(combat);
+  if (actionKey) {
+    combat.actionSlots[slotIndex] = createActionSlot(actionKey);
+  }
+  if (options.log !== false) {
+    logCombat(combat, 'You burn an action slot to draw anew.');
+  }
+  updateCombatUI(combat);
+  return true;
 }
 
 function createActionSlot(actionKey) {
@@ -790,6 +616,17 @@ function advanceSlotChain(combat, slot, action, index) {
   if (slot.consumed || !slot.actionKey) {
     combat.actionSlots[index] = null;
   }
+
+  if (cycled) {
+    const blockGain = Math.max(0, Number(combat.player?.passives?.cycleBlockGain || 0));
+    if (blockGain > 0) {
+      combat.player.block = (combat.player.block || 0) + blockGain;
+      logCombat(
+        combat,
+        `You draw steadiness from the cycle (+${blockGain} Block).`
+      );
+    }
+  }
 }
 
 export function endPlayerTurn(combat) {
@@ -961,41 +798,38 @@ function generateConsumableRewardOptions(ctx, count) {
   return sampleWithoutReplacement(pool, count);
 }
 
-function generateMerchantDraftOptions(ctx, count) {
-  const ownedMemories = new Set(ctx.state.playerMemories || []);
-  const ownedRelics = new Set(ctx.state.playerRelics || []);
-  const availableMemories = filterDevDisabledEntries("memory", MEMORY_DEFINITIONS);
-  const availableRelics = filterDevDisabledEntries("relic", RELIC_DEFINITIONS);
-  const availableConsumables = filterDevDisabledEntries(
-    "consumable",
-    CONSUMABLE_DEFINITIONS
-  );
-  const memoryCandidates = availableMemories
-    .filter((memory) => !ownedMemories.has(memory.key))
-    .map((memory) => ({ ...memory, rewardType: "memory" }));
-  const relicCandidates = availableRelics
-    .filter((relic) => !ownedRelics.has(relic.key))
-    .map((relic) => ({ ...relic, rewardType: "relic" }));
-  const memoryPool =
-    memoryCandidates.length >= count
-      ? memoryCandidates
-      : availableMemories.map((memory) => ({
-          ...memory,
-          rewardType: "memory",
-        }));
-  const relicPool =
-    relicCandidates.length >= count
-      ? relicCandidates
-      : availableRelics.map((relic) => ({
-          ...relic,
-          rewardType: "relic",
-        }));
-  const consumablePool = availableConsumables.map((item) => ({
-    ...item,
-    rewardType: "consumable",
-  }));
-  const combinedPool = [...memoryPool, ...relicPool, ...consumablePool];
-  return sampleWithoutReplacement(combinedPool, count);
+function generateMerchantDraftOptions(ctx, count, specialty = 'mixed') {
+  const optionCount = Math.max(1, Math.floor(Number(count) || 0));
+  const type = specialty || 'mixed';
+  const mapOptions = (items, rewardType) =>
+    items
+      .map((item) => (item ? { ...item, rewardType } : null))
+      .filter((item) => item && item.key);
+
+  switch (type) {
+    case 'memory': {
+      const options = generateMemoryRewardOptions(ctx, optionCount);
+      return mapOptions(options, 'memory');
+    }
+    case 'relic': {
+      const options = generateRelicRewardOptions(ctx, optionCount);
+      return mapOptions(options, 'relic');
+    }
+    case 'consumable': {
+      const options = generateConsumableRewardOptions(ctx, optionCount);
+      return mapOptions(options, 'consumable');
+    }
+    case 'mixed':
+    default: {
+      const memoryOption = mapOptions(generateMemoryRewardOptions(ctx, 1), 'memory');
+      const relicOption = mapOptions(generateRelicRewardOptions(ctx, 1), 'relic');
+      const consumableOption = mapOptions(
+        generateConsumableRewardOptions(ctx, 1),
+        'consumable'
+      );
+      return [...memoryOption, ...relicOption, ...consumableOption];
+    }
+  }
 }
 
 function applyRecoveryRoomBenefits(ctx, roomKey) {
@@ -1587,68 +1421,305 @@ function createRewardsPanel(ctx, config = {}) {
 
 function createMerchantPanel(ctx, continueButton) {
   const panel = createElement("div", "merchant-panel");
-  const description = createElement(
-    "p",
-    "merchant-panel__description",
-    "Spend gold to draft from the merchant's curated memories, relics, and curios. Each bargain costs a little more than the last."
+  const merchantKey = ctx.state.currentEncounter?.sprite?.key || "";
+  const specialty = MERCHANT_SPECIALTIES[merchantKey] || "mixed";
+  const specialtyLabels = {
+    memory: { singular: "Memory", plural: "Memories" },
+    relic: { singular: "Relic", plural: "Relics" },
+    consumable: { singular: "Consumable", plural: "Consumables" },
+    mixed: { singular: "Boon", plural: "Curios" },
+  };
+  const labelSet = specialtyLabels[specialty] || specialtyLabels.mixed;
+  const descriptionText =
+    specialty === "mixed"
+      ? "Helen offers a curated selection of memories, relics, and consumables. Each activation raises the shared cost across all merchants."
+      : `This merchant deals exclusively in ${labelSet.plural.toLowerCase()}. Each activation raises the shared cost across all merchants.`;
+  panel.appendChild(
+    createElement("p", "merchant-panel__description", descriptionText)
   );
-  panel.appendChild(description);
+
+  const status = createElement(
+    "p",
+    "merchant-panel__status",
+    "Activations used 0/3"
+  );
+  panel.appendChild(status);
 
   const actions = createElement("div", "merchant-panel__actions");
   const draftButton = createElement("button", "button button--primary");
-  actions.appendChild(draftButton);
+  const removeButton = createElement("button", "button button--ghost");
+  actions.append(draftButton, removeButton);
   panel.appendChild(actions);
 
   const rewardHolder = createElement("div", "merchant-panel__rewards");
   panel.appendChild(rewardHolder);
 
-  const updateDraftButtonLabel = () => {
-    const cost = ctx.state.merchantDraftCost || MERCHANT_BASE_DRAFT_COST;
-    draftButton.textContent = `Draft a Boon (${cost} Gold)`;
+  const limitPerEncounter = 3;
+  let activationsUsed = 0;
+  let passiveSummary = getPlayerPassiveSummary();
+
+  const getBaseCost = () => ctx.state.merchantDraftCost || MERCHANT_BASE_DRAFT_COST;
+  const getActivationCost = () => {
+    const multiplier = Math.max(0, passiveSummary.merchantCostMultiplier || 1);
+    return Math.max(1, Math.round(getBaseCost() * multiplier));
+  };
+  const getDraftOptionCount = () => {
+    const bonus = Math.max(0, Math.round(passiveSummary.draftOptionBonus || 0));
+    return Math.max(1, 3 + bonus);
+  };
+  const getRemainingActivations = () => limitPerEncounter - activationsUsed;
+  const refreshPassives = () => {
+    passiveSummary = getPlayerPassiveSummary();
   };
 
-  updateDraftButtonLabel();
+  const updateStatus = () => {
+    status.textContent = `Activations used ${activationsUsed}/${limitPerEncounter}`;
+  };
 
-  draftButton.addEventListener("click", () => {
-    const cost = ctx.state.merchantDraftCost || MERCHANT_BASE_DRAFT_COST;
+  const getRemovalCandidates = () => {
+    const candidates = [];
+    const includeType = (type) => specialty === 'mixed' || specialty === type;
+    if (includeType('memory')) {
+      (ctx.state.playerMemories || []).forEach((key) => {
+        const memory = MEMORY_MAP.get(key);
+        candidates.push({
+          type: 'memory',
+          key,
+          name: memory?.name || key,
+        });
+      });
+    }
+    if (includeType('relic')) {
+      (ctx.state.playerRelics || []).forEach((key) => {
+        const relic = RELIC_MAP.get(key);
+        candidates.push({ type: 'relic', key, name: relic?.name || key });
+      });
+    }
+    if (includeType('consumable')) {
+      const consumables = ctx.state.playerConsumables || {};
+      Object.entries(consumables).forEach(([key, count]) => {
+        if (!count) {
+          return;
+        }
+        const item = CONSUMABLE_MAP.get(key);
+        candidates.push({
+          type: 'consumable',
+          key,
+          name: item?.name || key,
+          count: Number(count) || 0,
+        });
+      });
+    }
+    return candidates;
+  };
+
+  const updateButtons = () => {
+    const remaining = getRemainingActivations();
+    const cost = getActivationCost();
+    const draftLabel = labelSet.singular;
+    draftButton.textContent = `Draft ${draftLabel} (${cost} Gold)`;
+    removeButton.textContent = `Remove ${draftLabel} (${cost} Gold)`;
+    draftButton.disabled = remaining <= 0;
+    const removalCandidates = getRemovalCandidates();
+    removeButton.disabled = remaining <= 0 || removalCandidates.length === 0;
+    if (removeButton.disabled && removalCandidates.length === 0) {
+      removeButton.title = `You carry no ${labelSet.plural.toLowerCase()} to remove.`;
+    } else {
+      removeButton.title = `Pay ${cost} gold to remove a ${draftLabel.toLowerCase()}.`;
+    }
+    draftButton.title = `Pay ${cost} gold to draft ${draftLabel.toLowerCase()} options.`;
+  };
+
+  const recordActivation = (baseCost) => {
+    const nextBase = baseCost + MERCHANT_DRAFT_COST_INCREMENT;
+    updateState({ merchantDraftCost: nextBase });
+    ctx.state.merchantDraftCost = nextBase;
+    activationsUsed += 1;
+    refreshPassives();
+    updateStatus();
+    updateButtons();
+  };
+
+  const ensureActivationAvailable = () => {
+    if (getRemainingActivations() <= 0) {
+      ctx.showToast('The merchant is finished bargaining with you this visit.');
+      return false;
+    }
+    return true;
+  };
+
+  updateStatus();
+  updateButtons();
+
+  draftButton.addEventListener('click', () => {
+    if (!ensureActivationAvailable()) {
+      return;
+    }
+    const cost = getActivationCost();
     const availableGold = ctx.state.playerGold || 0;
     if (availableGold < cost) {
       ctx.showToast(`You need ${cost} gold to bargain for a draft.`);
       return;
     }
-    const options = generateMerchantDraftOptions(ctx, 3);
+    const optionCount = specialty === 'mixed' ? 3 : getDraftOptionCount();
+    const options = generateMerchantDraftOptions(ctx, optionCount, specialty);
     if (!options.length) {
-      ctx.showToast("The merchant has nothing more to offer.");
+      ctx.showToast('The merchant has nothing more to offer.');
       return;
     }
+    const baseCost = getBaseCost();
     addGold(-cost, ctx);
-    updateState({ merchantDraftCost: cost + MERCHANT_DRAFT_COST_INCREMENT });
-    updateDraftButtonLabel();
+    recordActivation(baseCost);
     rewardHolder.replaceChildren();
+
+    const plan = {
+      gold: null,
+      memory: { mode: 'none', options: [], hideWhenNone: true },
+      relic: { mode: 'none', options: [], hideWhenNone: true },
+      consumable: { mode: 'none', options: [], hideWhenNone: true },
+      mixed: { mode: 'none', options: [], hideWhenNone: true },
+    };
+
+    if (specialty === 'memory') {
+      plan.memory = {
+        mode: 'draft',
+        options,
+        heading: 'Draft a Memory',
+        noneText: 'The merchant has no memories to trade.',
+        emptyText: 'The shelf of memories is bare.',
+        hideWhenNone: false,
+      };
+    } else if (specialty === 'relic') {
+      plan.relic = {
+        mode: 'draft',
+        options,
+        heading: 'Draft a Relic',
+        noneText: 'The merchant has no relics to trade.',
+        emptyText: 'No relics remain on display.',
+        hideWhenNone: false,
+      };
+    } else if (specialty === 'consumable') {
+      plan.consumable = {
+        mode: 'draft',
+        options,
+        heading: 'Draft a Consumable',
+        noneText: 'The merchant has no curios to offer.',
+        emptyText: 'Every bottle and charm has been sold.',
+        hideWhenNone: false,
+      };
+    } else {
+      plan.mixed = {
+        mode: 'draft',
+        options,
+        heading: 'Draft a Boon',
+        noneText: 'The merchant has nothing to trade.',
+        emptyText: 'The negotiating table is empty.',
+        hideWhenNone: false,
+      };
+    }
+
     const { panel: rewardsPanel } = createRewardsPanel(ctx, {
-      encounterType: "merchant",
-      plan: {
-        gold: null,
-        memory: { mode: "none", options: [], hideWhenNone: true },
-        relic: { mode: "none", options: [], hideWhenNone: true },
-        consumable: { mode: "none", options: [], hideWhenNone: true },
-        mixed: {
-          mode: "draft",
-          options,
-          heading: "Draft a Boon",
-          noneText: "The merchant has no boons to trade.",
-          emptyText: "The merchant's display stands empty.",
-          hideWhenNone: false,
-        },
-      },
+      encounterType: 'merchant',
+      plan,
       titleText: "Merchant's Offer",
-      skipLabel: "Leave the Offer",
+      skipLabel: 'Leave the Offer',
       allowSkip: true,
       continueButton,
     });
     if (rewardsPanel) {
       rewardHolder.appendChild(rewardsPanel);
     }
+  });
+
+  const showRemovalOptions = () => {
+    const candidates = getRemovalCandidates();
+    rewardHolder.replaceChildren();
+    if (candidates.length === 0) {
+      rewardHolder.appendChild(
+        createElement('p', 'merchant-panel__empty', 'Nothing to remove right now.')
+      );
+      return;
+    }
+    const list = createElement('div', 'merchant-removal');
+    candidates.forEach((candidate) => {
+      const labelParts = [candidate.name];
+      if (candidate.count > 1) {
+        labelParts.push(`×${candidate.count}`);
+      }
+      const optionButton = createElement(
+        'button',
+        'merchant-removal__option',
+        labelParts.join(' ')
+      );
+      optionButton.type = 'button';
+      optionButton.addEventListener('click', () => {
+        if (!ensureActivationAvailable()) {
+          return;
+        }
+        const cost = getActivationCost();
+        const availableGold = ctx.state.playerGold || 0;
+        if (availableGold < cost) {
+          ctx.showToast(`You need ${cost} gold to request a removal.`);
+          return;
+        }
+        const baseCost = getBaseCost();
+        addGold(-cost, ctx);
+        let removed = false;
+        if (candidate.type === 'memory') {
+          const memories = Array.isArray(ctx.state.playerMemories)
+            ? ctx.state.playerMemories.slice()
+            : [];
+          const index = memories.indexOf(candidate.key);
+          if (index !== -1) {
+            memories.splice(index, 1);
+            updateState({ playerMemories: memories });
+            ctx.state.playerMemories = memories;
+            removed = true;
+          }
+        } else if (candidate.type === 'relic') {
+          const relics = Array.isArray(ctx.state.playerRelics)
+            ? ctx.state.playerRelics.slice()
+            : [];
+          const index = relics.indexOf(candidate.key);
+          if (index !== -1) {
+            relics.splice(index, 1);
+            updateState({ playerRelics: relics });
+            ctx.state.playerRelics = relics;
+            removed = true;
+          }
+        } else if (candidate.type === 'consumable') {
+          const consumables = { ...(ctx.state.playerConsumables || {}) };
+          if (consumables[candidate.key]) {
+            delete consumables[candidate.key];
+            updateState({ playerConsumables: consumables });
+            ctx.state.playerConsumables = consumables;
+            removed = true;
+          }
+        }
+        if (removed) {
+          recordActivation(baseCost);
+          rewardHolder.replaceChildren(
+            createElement(
+              'p',
+              'merchant-panel__message',
+              `${candidate.name} has been removed from your run.`
+            )
+          );
+          ctx.updateResources?.();
+        } else {
+          ctx.showToast('Nothing to remove.');
+        }
+      });
+      list.appendChild(optionButton);
+    });
+    rewardHolder.appendChild(list);
+  };
+
+  removeButton.addEventListener('click', () => {
+    if (!ensureActivationAvailable()) {
+      return;
+    }
+    showRemovalOptions();
   });
 
   return panel;

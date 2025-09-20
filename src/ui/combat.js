@@ -7,6 +7,7 @@ import {
   performPlayerAction,
   getActionApCost,
   getActionEssenceCost,
+  burnActionSlot,
 } from '../combat/engine.js';
 import { playerCharacter } from '../data/index.js';
 import { setActiveCombat, updateState } from '../state/state.js';
@@ -57,11 +58,73 @@ function createCombatantDisplay(combatant, role, encounter) {
 
 function createCombatExperience(ctx, { room, encounterType, encounter }) {
   const combat = createCombatState(ctx, { room, encounterType, encounter });
+  combat.devBurnMode = false;
   const container = createElement('div', 'combat');
   const sidebar = createElement('aside', 'combat__sidebar');
   const statsPanel = createElement('div', 'combat-sidebar__summary');
+  const statsText = createElement('div', 'combat-sidebar__summary-text');
+  statsPanel.appendChild(statsText);
+  let devApButton = null;
+  if (ctx.state?.devMode) {
+    devApButton = createElement('button', 'combat-dev-button');
+    devApButton.type = 'button';
+    devApButton.setAttribute('aria-label', 'Grant 3 AP');
+    devApButton.title = 'Developer tool: grant 3 AP.';
+    const icon = document.createElement('img');
+    icon.src = 'logofull.png';
+    icon.alt = '';
+    icon.loading = 'lazy';
+    icon.decoding = 'async';
+    icon.className = 'combat-dev-button__icon';
+    devApButton.appendChild(icon);
+    devApButton.addEventListener('click', () => {
+      if (!combat.ctx?.state?.devMode) {
+        combat.ctx?.showToast?.('Developer mode is required for this tool.');
+        return;
+      }
+      combat.player.ap = Math.min(
+        combat.player.ap + 3,
+        combat.player.apCarryoverMax
+      );
+      updateStatsSummary(combat);
+      updateActionButtons(combat);
+      combat.ctx?.showToast?.('Developer grant: +3 AP.');
+    });
+    statsPanel.appendChild(devApButton);
+  }
+  const actionBarSection = createElement('div', 'combat-action-bar');
   const actionBar = createElement('div', 'action-bar');
-  sidebar.append(statsPanel, actionBar);
+  actionBarSection.appendChild(actionBar);
+  let devBurnButton = null;
+  if (ctx.state?.devMode) {
+    devBurnButton = createElement(
+      'button',
+      'combat-dev-button combat-dev-button--burn'
+    );
+    devBurnButton.type = 'button';
+    devBurnButton.setAttribute('aria-label', 'Toggle burn mode');
+    devBurnButton.title = 'Developer tool: replace actions from the soup.';
+    const burnIcon = document.createElement('img');
+    burnIcon.src = 'logofull.png';
+    burnIcon.alt = '';
+    burnIcon.loading = 'lazy';
+    burnIcon.decoding = 'async';
+    burnIcon.className = 'combat-dev-button__icon';
+    devBurnButton.appendChild(burnIcon);
+    devBurnButton.addEventListener('click', () => {
+      if (!combat.ctx?.state?.devMode) {
+        combat.devBurnMode = false;
+        combat.ctx?.showToast?.('Developer mode is required for burn mode.');
+        updateActionButtons(combat);
+        return;
+      }
+      combat.devBurnMode = !combat.devBurnMode;
+      devBurnButton.classList.toggle('is-active', combat.devBurnMode);
+      updateActionButtons(combat);
+    });
+    actionBarSection.appendChild(devBurnButton);
+  }
+  sidebar.append(statsPanel, actionBarSection);
 
   const endTurnButton = createElement(
     'button',
@@ -115,7 +178,9 @@ function createCombatExperience(ctx, { room, encounterType, encounter }) {
     container,
     sidebar,
     statsPanel,
+    statsText,
     actionBar,
+    actionBarSection,
     endTurnButton,
     main,
     board,
@@ -130,6 +195,8 @@ function createCombatExperience(ctx, { room, encounterType, encounter }) {
     enemyStatuses: enemyDisplay.statusList,
     footer,
     continueButton,
+    devBurnButton: devBurnButton,
+    devApButton,
   };
 
   setActiveCombat(combat);
@@ -183,7 +250,8 @@ function updateStatsSummary(combat) {
     return;
   }
   const gold = combat.ctx?.state?.playerGold || 0;
-  combat.dom.statsPanel.textContent =
+  const target = combat.dom.statsText || combat.dom.statsPanel;
+  target.textContent =
     `Essence ${combat.player.essence}/${combat.player.maxEssence} • AP ${combat.player.ap}/${combat.player.apCarryoverMax} • Gold ${gold}`;
 }
 
@@ -247,6 +315,21 @@ function updateActionButtons(combat) {
   }
   const bar = combat.dom.actionBar;
   bar.replaceChildren();
+  const burnModeActive = Boolean(combat.devBurnMode && combat.ctx?.state?.devMode);
+  bar.classList.toggle('action-bar--burn-mode', burnModeActive);
+  if (combat.dom.devBurnButton) {
+    combat.dom.devBurnButton.classList.toggle('is-active', burnModeActive);
+    combat.dom.devBurnButton.disabled = !combat.ctx?.state?.devMode;
+  }
+  if (combat.dom.actionBarSection) {
+    combat.dom.actionBarSection.classList.toggle(
+      'combat-action-bar--burn-mode',
+      burnModeActive
+    );
+  }
+  if (!burnModeActive && combat.devBurnMode && !combat.ctx?.state?.devMode) {
+    combat.devBurnMode = false;
+  }
   combat.actionSlots.forEach((slot, index) => {
     const button = createActionButton(combat, slot, index);
     bar.appendChild(button);
@@ -296,6 +379,17 @@ function createActionButton(combat, slot, index) {
     const chainText = sequence.map((key) => ACTION_DEFINITIONS[key]?.name || key).join(' → ');
     const chain = createElement('p', 'action-button__chain', `Chain: ${chainText}`);
     button.appendChild(chain);
+  }
+
+  const burnMode = combat.devBurnMode && combat.ctx?.state?.devMode;
+  if (burnMode) {
+    button.classList.add('action-button--dev-burn');
+    button.disabled = false;
+    button.title = 'Burn this action to draw a new one.';
+    button.addEventListener('click', () => {
+      burnActionSlot(combat, index);
+    });
+    return button;
   }
 
   const canUse =
