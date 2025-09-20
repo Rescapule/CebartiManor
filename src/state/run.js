@@ -18,6 +18,7 @@ import {
   MERCHANT_BASE_DRAFT_COST,
 } from "./config.js";
 import { filterDevDisabledEntries } from "./devtools.js";
+import { createEventEncounter } from "./events.js";
 
 function buildInitialRoomPool() {
   return ROOM_DEFINITIONS.map((room) => room.key);
@@ -163,7 +164,12 @@ export async function goToRoom(ctx, roomKey, options = {}) {
     currentEncounterType: encounterType,
     currentRoomIsEnhanced: !!options.enhanced,
   });
-  const encounter = getEncounterForType(encounterType);
+  let encounter = null;
+  if (encounterType === "event") {
+    encounter = createEventEncounter(roomKey, options.eventOptions);
+  } else {
+    encounter = getEncounterForType(encounterType);
+  }
   updateState({ currentEncounter: encounter });
 
   await ctx.transitionTo("room", {

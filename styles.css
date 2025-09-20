@@ -1698,6 +1698,47 @@ button {
   color: var(--color-muted);
 }
 
+.event-encounter {
+  margin-top: 1.5rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.event-encounter__form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.event-encounter__choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.event-encounter__choice {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.event-encounter__label {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 500;
+}
+
+.event-encounter__label input[type="radio"] {
+  accent-color: var(--color-aether, #9ea6ff);
+}
+
+.event-encounter__results {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .combat-rewards__actions {
   display: flex;
   flex-wrap: wrap;

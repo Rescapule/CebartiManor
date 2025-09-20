@@ -130,6 +130,19 @@ export function awardRelic(key) {
   return true;
 }
 
+export function removeRelic(key) {
+  if (!key) {
+    return false;
+  }
+  const relics = ensurePlayerRelics();
+  const index = relics.indexOf(key);
+  if (index === -1) {
+    return false;
+  }
+  relics.splice(index, 1);
+  return true;
+}
+
 export function recordMemory(key) {
   if (!key) {
     return false;
@@ -139,6 +152,19 @@ export function recordMemory(key) {
     return false;
   }
   memories.push(key);
+  return true;
+}
+
+export function removeMemory(key) {
+  if (!key) {
+    return false;
+  }
+  const memories = ensurePlayerMemories();
+  const index = memories.indexOf(key);
+  if (index === -1) {
+    return false;
+  }
+  memories.splice(index, 1);
   return true;
 }
 

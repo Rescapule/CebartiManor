@@ -453,6 +453,14 @@ import { initializeDebugLogUI } from "./ui/debug-log.js";
           : "A spectral merchant beckons you toward a clandestine bargain.";
       case "recovery":
         return "A stillness settles here, inviting your essence to linger and mend.";
+      case "event":
+        if (encounter?.flavor?.description) {
+          return encounter.flavor.description;
+        }
+        if (encounter?.definition?.summary) {
+          return encounter.definition.summary;
+        }
+        return "The manor's will twists around you, promising consequences.";
       default:
         return "You secure what you can from the chamber before returning to the corridor.";
     }

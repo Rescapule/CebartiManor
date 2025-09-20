@@ -10,6 +10,8 @@ import {
   MEMORY_DEFINITIONS,
   MEMORY_MAP,
   ENEMY_DEFINITIONS,
+  EVENT_DEFINITIONS,
+  EVENT_MAP,
 } from "../data/index.js";
 import { ACTION_DEFINITIONS } from "../combat/actions-data.js";
 import { ACTION_SEQUENCES } from "../combat/actions.js";
@@ -413,6 +415,71 @@ function buildConsumableEntriesFromKeys(keys = []) {
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function buildEventEntriesFromKeys(keys = []) {
+  const seen = new Set();
+  const entries = [];
+  keys.forEach((key) => {
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    const event = EVENT_MAP.get(key);
+    if (!event) {
+      return;
+    }
+    const detailParagraphs = [];
+    if (typeof event.summary === "string" && event.summary.trim().length > 0) {
+      detailParagraphs.push({
+        text: event.summary,
+        bindingSource: { object: event, path: ["summary"] },
+      });
+    }
+    if (Array.isArray(event.detailParagraphs)) {
+      event.detailParagraphs.forEach((paragraph, index) => {
+        if (typeof paragraph === "string" && paragraph.trim().length > 0) {
+          detailParagraphs.push({
+            text: paragraph,
+            bindingSource: { object: event.detailParagraphs, path: [index] },
+          });
+        }
+      });
+    }
+
+    const stats = [];
+    if (event.category) {
+      stats.push({ label: "Category", value: formatTitleCase(event.category) });
+    }
+    if (event.effect?.type) {
+      const effectLabel = formatTitleCase(
+        event.effect.type.replace(/([a-z])([A-Z])/g, "$1 $2")
+      );
+      stats.push({ label: "Effect", value: effectLabel || event.effect.type });
+    }
+    if (Number.isFinite(Number(event.effect?.count))) {
+      stats.push({
+        label: "Count",
+        value: Number(event.effect.count),
+        devBinding: createDevNumberBinding(event.effect, ["count"], {
+          min: 0,
+          step: 1,
+        }),
+      });
+    }
+
+    entries.push({
+      key: event.key,
+      type: "event",
+      name: event.name,
+      summary: event.summary || "",
+      detailParagraphs,
+      stats,
+      iconSymbol: event.name ? event.name.charAt(0).toUpperCase() : "E",
+    });
+  });
+
+  return entries.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function formatActionCostLine(cost) {
   if (!cost || typeof cost !== "object") {
     return "";
@@ -760,6 +827,7 @@ function renderCodexContent(target, options = {}) {
     enemyKeys = [],
     bossKeys = [],
     playerGhostKeys = [],
+    eventKeys = [],
     pages: customPages = [],
     emptyMessage = "No entries recorded in this ledger.",
   } = options;
@@ -772,6 +840,7 @@ function renderCodexContent(target, options = {}) {
   const enemyEntries = buildEnemyEntriesFromKeys(enemyKeys);
   const bossEntries = buildBossEntriesFromKeys(bossKeys);
   const playerGhostEntries = buildPlayerGhostEntriesFromKeys(playerGhostKeys);
+  const eventEntries = buildEventEntriesFromKeys(eventKeys);
 
   const entriesByType = {
     memory: memoryEntries,
@@ -781,6 +850,7 @@ function renderCodexContent(target, options = {}) {
     enemy: enemyEntries,
     boss: bossEntries,
     playerGhost: playerGhostEntries,
+    event: eventEntries,
   };
 
   const defaultSections = [
@@ -1188,6 +1258,7 @@ function renderCodexContent(target, options = {}) {
     enemy: "Enemies",
     boss: "Bosses",
     playerGhost: "Player Ghosts",
+    event: "Events",
   };
 
   function createSection(section, entries, pageIndex) {
@@ -1578,6 +1649,7 @@ export function showBestiary(ctx) {
         enemyKeys: enemySprites.map((sprite) => sprite.key),
         bossKeys: bossSprites.map((sprite) => sprite.key),
         playerGhostKeys: [playerCharacter.key],
+        eventKeys: EVENT_DEFINITIONS.map((event) => event.key),
         pages: BESTIARY_PAGES,
         emptyMessage: "Entries will appear here as development continues.",
       });
