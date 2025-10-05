@@ -164,22 +164,35 @@ export async function goToRoom(ctx, roomKey, options = {}) {
     currentEncounterType: encounterType,
     currentRoomIsEnhanced: !!options.enhanced,
   });
+
   let encounter = null;
-  if (encounterType === "event") {
+  if (options.encounterOverride) {
+    encounter = { ...options.encounterOverride };
+    if (encounterType && !encounter.type) {
+      encounter.type = encounterType;
+    }
+  } else if (encounterType === "event") {
     encounter = createEventEncounter(roomKey, options.eventOptions);
   } else {
     encounter = getEncounterForType(encounterType);
   }
   updateState({ currentEncounter: encounter });
 
+  const roomOverride =
+    options.roomOverride && typeof options.roomOverride === "object"
+      ? options.roomOverride
+      : null;
+  const roomForTransition = roomOverride ? { ...room, ...roomOverride } : room;
+  const backgroundOverride = options.backgroundOverride || null;
+
   await ctx.transitionTo("room", {
-    room,
-    background: room.background,
-    ariaLabel: room.ariaLabel,
+    room: roomForTransition,
+    background: backgroundOverride || roomForTransition.background,
+    ariaLabel: roomForTransition.ariaLabel,
     encounterType,
     encounter,
   });
-  ctx.showToast(`You enter ${room.name}.`);
+  ctx.showToast(`You enter ${roomForTransition.name}.`);
 }
 
 export async function goToFoyer(ctx) {
