@@ -5,9 +5,15 @@ import {
   MANOR_KEY_CONSUMABLE_KEY,
 } from "../../data/index.js";
 import { sampleWithoutReplacement } from "../../state/random.js";
-import { clearRunState, getDoorCategoryOptions, goToFoyer, goToRoom } from "../../state/run.js";
+import {
+  clearRunState,
+  getDoorCategoryOptions,
+  goToFoyer,
+  goToRoom,
+} from "../../state/run.js";
 import { updateState } from "../../state/state.js";
 import { createElement } from "../dom.js";
+import { createDevRoomBuilder } from "../dev-room-builder.js";
 
 const corridorScreen = {
   key: "corridor",
@@ -61,6 +67,14 @@ const corridorScreen = {
     }
 
     const subtitle = createElement("p", "screen__subtitle", descriptionText);
+
+    let devBuilder = null;
+    if (ctx.state?.devMode) {
+      devBuilder = createDevRoomBuilder(ctx, {
+        availableRoomKeys: availableRooms,
+        onEnterRoom: (roomKey, roomOptions) => goToRoom(ctx, roomKey, roomOptions),
+      });
+    }
 
     updateState({ currentRoomIsEnhanced: false });
 
@@ -280,7 +294,11 @@ const corridorScreen = {
     if (tracker) {
       wrapper.append(tracker);
     }
-    wrapper.append(title, subtitle, doorMap, footer);
+    wrapper.append(title, subtitle);
+    if (devBuilder?.element) {
+      wrapper.append(devBuilder.element);
+    }
+    wrapper.append(doorMap, footer);
     return wrapper;
   },
 };
