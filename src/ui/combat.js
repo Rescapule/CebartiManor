@@ -14,7 +14,7 @@ import { setActiveCombat, updateState } from '../state/state.js';
 import { isDevEntryDisabled } from '../state/devtools.js';
 import { createElement } from './dom.js';
 
-function createCombatantDisplay(combatant, role, encounter) {
+function createCombatantDisplay(combatant, role, spriteSource) {
   const container = createElement(
     'div',
     `combatant-card combatant-card--${role}`
@@ -24,17 +24,13 @@ function createCombatantDisplay(combatant, role, encounter) {
   avatar.dataset.role = role;
   container.appendChild(avatar);
 
-  const spriteSource =
-    role === 'enemy'
-      ? encounter?.sprite
-      : role === 'player'
-      ? playerCharacter
-      : null;
-  if (spriteSource?.src) {
+  const resolvedSprite = role === 'player' ? playerCharacter : spriteSource;
+
+  if (resolvedSprite?.src) {
     const image = document.createElement('img');
     image.className = 'combatant-card__sprite';
-    image.src = spriteSource.src;
-    image.alt = spriteSource.alt || combatant.name;
+    image.src = resolvedSprite.src;
+    image.alt = resolvedSprite.alt || combatant.name;
     image.loading = role === 'player' ? 'eager' : 'lazy';
     image.decoding = 'async';
     avatar.appendChild(image);
@@ -46,8 +42,8 @@ function createCombatantDisplay(combatant, role, encounter) {
   const stats = createElement('div', 'combatant-card__stats');
   container.appendChild(stats);
 
-  if (role === 'enemy' && encounter?.sprite) {
-    avatar.dataset.sprite = encounter.sprite.key || 'enemy';
+  if (role === 'enemy' && resolvedSprite) {
+    avatar.dataset.sprite = resolvedSprite.key || 'enemy';
   }
 
   const statusList = createElement('div', 'combatant-card__statuses');
@@ -56,9 +52,86 @@ function createCombatantDisplay(combatant, role, encounter) {
   return { container, avatar, stats, statusList };
 }
 
+function requiresEnemyTarget(action) {
+  if (!action) {
+    return false;
+  }
+  if (action.requiresTarget === false) {
+    return false;
+  }
+  if (action.requiresTarget === true) {
+    return true;
+  }
+  const nonTargetTypes = new Set(['buff', 'heal', 'support']);
+  return !nonTargetTypes.has(action.type || '');
+}
+
+function forEachEnemyDisplay(combat, callback) {
+  if (!combat?.dom?.enemyDisplays || !(combat.dom.enemyDisplays instanceof Map)) {
+    return;
+  }
+  combat.dom.enemyDisplays.forEach((display, enemyId) => {
+    callback(display, enemyId);
+  });
+}
+
+function cancelTargetSelection(combat) {
+  if (!combat) {
+    return;
+  }
+  combat.targeting = null;
+  if (combat.dom?.container) {
+    combat.dom.container.classList.remove('combat--targeting');
+  }
+  forEachEnemyDisplay(combat, (display) => {
+    display.container.classList.remove('combatant-card--targetable');
+    display.container.classList.remove('combatant-card--untargetable');
+  });
+  updateActionButtons(combat);
+}
+
+function beginTargetSelection(combat, slotIndex, action) {
+  if (!combat?.dom?.container) {
+    return;
+  }
+  const hasAliveEnemy = Array.isArray(combat.enemies)
+    ? combat.enemies.some((enemy) => enemy && enemy.essence > 0)
+    : false;
+  if (!hasAliveEnemy) {
+    combat.ctx?.showToast?.('No enemies remain to target.');
+    return;
+  }
+  combat.targeting = { slotIndex, actionKey: action?.key || null };
+  combat.dom.container.classList.add('combat--targeting');
+  forEachEnemyDisplay(combat, (display, enemyId) => {
+    const enemy = combat.enemies?.find((entry) => entry.id === enemyId);
+    const alive = enemy ? enemy.essence > 0 : false;
+    display.container.classList.toggle('combatant-card--targetable', alive);
+    display.container.classList.toggle('combatant-card--untargetable', !alive);
+  });
+  updateActionButtons(combat);
+  combat.ctx?.showToast?.('Select a target.');
+}
+
+function handleEnemyTargetSelection(combat, enemyId) {
+  if (!combat?.targeting) {
+    return;
+  }
+  const enemy = combat.enemies?.find((entry) => entry.id === enemyId);
+  if (!enemy || enemy.essence <= 0) {
+    combat.ctx?.showToast?.('That foe is already defeated.');
+    cancelTargetSelection(combat);
+    return;
+  }
+  const slotIndex = combat.targeting.slotIndex;
+  cancelTargetSelection(combat);
+  performPlayerAction(combat, slotIndex, enemyId);
+}
+
 function createCombatExperience(ctx, { room, encounterType, encounter }) {
   const combat = createCombatState(ctx, { room, encounterType, encounter });
   combat.devBurnMode = false;
+  combat.targeting = null;
   const container = createElement('div', 'combat');
   const sidebar = createElement('aside', 'combat__sidebar');
   const statsPanel = createElement('div', 'combat-sidebar__summary');
@@ -132,6 +205,7 @@ function createCombatExperience(ctx, { room, encounterType, encounter }) {
     'End Turn'
   );
   endTurnButton.addEventListener('click', () => {
+    cancelTargetSelection(combat);
     if (combat.turn === 'player' && combat.status === 'inProgress') {
       endPlayerTurn(combat);
     }
@@ -141,8 +215,34 @@ function createCombatExperience(ctx, { room, encounterType, encounter }) {
   const main = createElement('div', 'combat__main');
   const board = createElement('div', 'combat__board');
   const playerDisplay = createCombatantDisplay(combat.player, 'player');
-  const enemyDisplay = createCombatantDisplay(combat.enemy, 'enemy', encounter);
-  board.append(playerDisplay.container, enemyDisplay.container);
+  const playerGroup = createElement('div', 'combatant-group combatant-group--player');
+  playerGroup.appendChild(playerDisplay.container);
+
+  const enemyGroup = createElement('div', 'combatant-group combatant-group--enemies');
+  const enemyDisplays = new Map();
+  combat.enemies.forEach((enemy) => {
+    if (!enemy) {
+      return;
+    }
+    const enemyDisplay = createCombatantDisplay(enemy, 'enemy', enemy.sprite);
+    enemyDisplay.container.dataset.enemyId = enemy.id;
+    enemyDisplay.container.addEventListener('click', () => {
+      handleEnemyTargetSelection(combat, enemy.id);
+    });
+    enemyGroup.appendChild(enemyDisplay.container);
+    enemyDisplays.set(enemy.id, enemyDisplay);
+  });
+
+  if (enemyDisplays.size === 0) {
+    const placeholder = createElement(
+      'div',
+      'combatant-card combatant-card--enemy',
+      'No foes remain.'
+    );
+    enemyGroup.appendChild(placeholder);
+  }
+
+  board.append(playerGroup, enemyGroup);
   const floatLayer = createElement('div', 'combat__float-layer');
   const logElement = createCombatLogElement();
   main.append(board, floatLayer, logElement);
@@ -190,13 +290,25 @@ function createCombatExperience(ctx, { room, encounterType, encounter }) {
     playerPanel: playerDisplay.container,
     playerStats: playerDisplay.stats,
     playerStatuses: playerDisplay.statusList,
-    enemyPanel: enemyDisplay.container,
-    enemyStats: enemyDisplay.stats,
-    enemyStatuses: enemyDisplay.statusList,
+    enemyDisplays,
+    enemyGroup,
     footer,
     continueButton,
     devBurnButton: devBurnButton,
     devApButton,
+  };
+
+  combat.dom.getPanelForCombatant = (combatant) => {
+    if (!combatant) {
+      return null;
+    }
+    if (combatant.side === 'player') {
+      return combat.dom.playerPanel;
+    }
+    if (combatant.side === 'enemy') {
+      return combat.dom.enemyDisplays?.get(combatant.id)?.container || null;
+    }
+    return null;
   };
 
   setActiveCombat(combat);
@@ -237,12 +349,28 @@ function updateCombatUI(combat) {
     combat.dom.playerStats,
     combat.dom.playerStatuses
   );
-  updateCombatantPanel(
-    combat,
-    combat.enemy,
-    combat.dom.enemyStats,
-    combat.dom.enemyStatuses
-  );
+  if (Array.isArray(combat.enemies)) {
+    combat.enemies.forEach((enemy) => {
+      const display = combat.dom.enemyDisplays?.get(enemy.id);
+      if (!display) {
+        return;
+      }
+      updateCombatantPanel(combat, enemy, display.stats, display.statusList);
+      display.container.classList.toggle(
+        'combatant-card--defeated',
+        enemy.essence <= 0
+      );
+      const targeting = Boolean(combat.targeting);
+      display.container.classList.toggle(
+        'combatant-card--targetable',
+        targeting && enemy.essence > 0
+      );
+      display.container.classList.toggle(
+        'combatant-card--untargetable',
+        targeting && enemy.essence <= 0
+      );
+    });
+  }
 }
 
 function updateStatsSummary(combat) {
@@ -330,6 +458,14 @@ function updateActionButtons(combat) {
   if (!burnModeActive && combat.devBurnMode && !combat.ctx?.state?.devMode) {
     combat.devBurnMode = false;
   }
+  if (
+    combat.targeting &&
+    (!combat.actionSlots[combat.targeting.slotIndex] ||
+      !combat.actionSlots[combat.targeting.slotIndex]?.actionKey)
+  ) {
+    cancelTargetSelection(combat);
+    return;
+  }
   combat.actionSlots.forEach((slot, index) => {
     const button = createActionButton(combat, slot, index);
     bar.appendChild(button);
@@ -350,6 +486,7 @@ function createActionButton(combat, slot, index) {
     button.textContent = 'Unknown';
     return button;
   }
+  const requiresTarget = requiresEnemyTarget(action);
   const devDisabled = isDevEntryDisabled('action', action.key);
   const apCost = getActionApCost(combat, action);
   const essenceCost = getActionEssenceCost(combat, action);
@@ -407,8 +544,26 @@ function createActionButton(combat, slot, index) {
     button.title = `${action.name} — ${action.description}`;
   }
   if (canUse) {
-    button.addEventListener('click', () => performPlayerAction(combat, index));
+    if (requiresTarget) {
+      button.addEventListener('click', () => {
+        if (combat.targeting && combat.targeting.slotIndex === index) {
+          cancelTargetSelection(combat);
+        } else {
+          beginTargetSelection(combat, index, action);
+        }
+      });
+    } else {
+      button.addEventListener('click', () => {
+        cancelTargetSelection(combat);
+        performPlayerAction(combat, index);
+      });
+    }
   }
+  button.classList.toggle('action-button--requires-target', requiresTarget);
+  button.classList.toggle(
+    'action-button--targeting',
+    combat.targeting?.slotIndex === index
+  );
   return button;
 }
 

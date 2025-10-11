@@ -3,6 +3,7 @@ import {
   dealDamage,
   duplicateRandomActionSlot,
   getActionApCost,
+  getPrimaryEnemy,
   hasStatus,
   healCombatant,
   logCombat,
@@ -137,7 +138,7 @@ const ACTION_DEFINITIONS = {
     facingEffect(combat) {
       combat.player.temp.retaliateDamage += 2;
     },
-    effect: ({ combat, actor }) => {
+    effect: ({ combat, actor, target }) => {
       const passives = actor === combat.player ? combat.player.passives || {} : {};
       const blockBonus = passives.guardBlockBonus || 0;
       const blockAmount = 6 + blockBonus;
@@ -154,7 +155,7 @@ const ACTION_DEFINITIONS = {
     baseDamage: 0,
     description: "Gain Armor (2) and Block (6).",
     chain: { key: "fearCore", index: 1 },
-    effect: ({ combat, actor }) => {
+    effect: ({ combat, actor, target }) => {
       actor.block = (actor.block || 0) + 6;
       applyStatus(actor, "armor", 2, { duration: 2 });
       logCombat(combat, `${actor.name} braces behind solid defenses.`);
@@ -210,7 +211,7 @@ const ACTION_DEFINITIONS = {
     facingEffect(combat) {
       combat.player.temp.retaliateDamage += 3;
     },
-    effect: ({ combat, actor }) => {
+    effect: ({ combat, actor, target }) => {
       actor.block = (actor.block || 0) + 10;
       logCombat(combat, `${actor.name} shelters behind a tower shield (Block 10).`);
     },
@@ -709,7 +710,7 @@ const ACTION_DEFINITIONS = {
     type: "attack",
     baseDamage: 0,
     description: "Copy the last action at +1 AP cost and −20% damage.",
-    effect: ({ combat, actor }) => {
+    effect: ({ combat, actor, target }) => {
       const last = actor.flags?.lastAction;
       if (!last) {
         logCombat(combat, "There is no action to echo.");
@@ -720,7 +721,7 @@ const ACTION_DEFINITIONS = {
         logCombat(combat, "The last action cannot be echoed.");
         return { cancel: true };
       }
-      const baseCost = getActionApCost(combat, action);
+      const baseCost = getActionApCost(combat, action, target);
       const totalCost = baseCost + 1;
       if (totalCost > actor.ap) {
         logCombat(combat, "You lack the AP to echo that memory.");
@@ -730,7 +731,7 @@ const ACTION_DEFINITIONS = {
       combat.player.flags = combat.player.flags || {};
       combat.player.flags.echoDamageModifier = 0.8;
       combat.player.flags.echoActive = true;
-      action.effect?.({ combat, actor, target: combat.enemy, slot: null });
+      action.effect?.({ combat, actor, target: target || getPrimaryEnemy(combat), slot: null });
       combat.player.history.push({ key: action.key, name: `${action.name} (Echo)` });
       combat.player.flags.echoActive = false;
       combat.player.flags.echoDamageModifier = 1;

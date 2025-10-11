@@ -127,6 +127,60 @@ function cloneEnemyMoves(moves, multiplier) {
   }));
 }
 
+function getEncounterEnemyEntries(encounter) {
+  if (Array.isArray(encounter?.enemies) && encounter.enemies.length > 0) {
+    return encounter.enemies;
+  }
+  if (encounter?.sprite) {
+    return [{ sprite: encounter.sprite }];
+  }
+  return [];
+}
+
+function createEnemyId(index) {
+  return `enemy-${index + 1}`;
+}
+
+function getLivingEnemies(combat) {
+  if (!combat || !Array.isArray(combat.enemies)) {
+    return [];
+  }
+  return combat.enemies.filter((enemy) => enemy && enemy.essence > 0);
+}
+
+function findEnemyById(combat, enemyId) {
+  if (!combat || !Array.isArray(combat.enemies)) {
+    return null;
+  }
+  return combat.enemies.find((enemy) => enemy && enemy.id === enemyId) || null;
+}
+
+function getPrimaryEnemy(combat) {
+  const living = getLivingEnemies(combat);
+  if (living.length > 0) {
+    return living[0];
+  }
+  return Array.isArray(combat.enemies) ? combat.enemies[0] || null : null;
+}
+
+function areAllEnemiesDefeated(combat) {
+  return getLivingEnemies(combat).length === 0;
+}
+
+function actionRequiresEnemyTarget(action) {
+  if (!action) {
+    return false;
+  }
+  if (action.requiresTarget === false) {
+    return false;
+  }
+  if (action.requiresTarget === true) {
+    return true;
+  }
+  const nonTargetTypes = new Set(["buff", "heal", "support"]);
+  return !nonTargetTypes.has(action.type || "");
+}
+
 export function createCombatState(ctx, { encounterType, encounter, room }) {
   ensureDefaultMemories(ctx);
   const memoryKeys = Array.isArray(ctx.state.playerMemories)
@@ -169,35 +223,58 @@ export function createCombatState(ctx, { encounterType, encounter, room }) {
   };
   resetTempStats(player);
 
-  const sprite = encounter?.sprite || {};
-  const enemyDefinition = ENEMY_DEFINITIONS[sprite.key] || {
-    maxEssence: 12,
-    moves: DEFAULT_ENEMY_MOVES,
-  };
   const multiplier = getEncounterScaling(encounterType);
-  const baseEnemyEssence = enemyDefinition.maxEssence || 12;
-  const scaledEnemyEssence = Math.max(1, scaleValue(baseEnemyEssence, multiplier));
-  const adjustedEnemyEssence =
-    encounterType === "boss"
-      ? Math.max(1, Math.round(scaledEnemyEssence / 2))
-      : scaledEnemyEssence;
+  const enemyEntries = getEncounterEnemyEntries(encounter);
+  const enemies = enemyEntries.map((entry, index) => {
+    const sprite = entry?.sprite || {};
+    const definition = ENEMY_DEFINITIONS[sprite.key] || {
+      maxEssence: 12,
+      moves: DEFAULT_ENEMY_MOVES,
+    };
+    const baseEnemyEssence = definition.maxEssence || 12;
+    const scaledEnemyEssence = Math.max(1, scaleValue(baseEnemyEssence, multiplier));
+    const adjustedEnemyEssence =
+      encounterType === "boss"
+        ? Math.max(1, Math.round(scaledEnemyEssence / 2))
+        : scaledEnemyEssence;
+    const enemy = {
+      id: entry?.id || createEnemyId(index),
+      side: "enemy",
+      name: sprite.name || `Hostile Spirit ${index + 1}`,
+      maxEssence: adjustedEnemyEssence,
+      essence: adjustedEnemyEssence,
+      statuses: {},
+      block: 0,
+      armor: 0,
+      history: [],
+      flags: {},
+      moves: cloneEnemyMoves(definition.moves, multiplier),
+      moveIndex: 0,
+      sprite,
+    };
+    resetTempStats(enemy);
+    return enemy;
+  });
 
-  const enemy = {
-    id: "enemy",
-    side: "enemy",
-    name: sprite.name || "Hostile Spirit",
-    maxEssence: adjustedEnemyEssence,
-    essence: adjustedEnemyEssence,
-    statuses: {},
-    block: 0,
-    armor: 0,
-    history: [],
-    flags: {},
-    moves: cloneEnemyMoves(enemyDefinition.moves, multiplier),
-    moveIndex: 0,
-    sprite,
-  };
-  resetTempStats(enemy);
+  if (enemies.length === 0) {
+    const fallback = {
+      id: createEnemyId(0),
+      side: "enemy",
+      name: "Hostile Spirit",
+      maxEssence: 12,
+      essence: 12,
+      statuses: {},
+      block: 0,
+      armor: 0,
+      history: [],
+      flags: {},
+      moves: cloneEnemyMoves(DEFAULT_ENEMY_MOVES, multiplier),
+      moveIndex: 0,
+      sprite: {},
+    };
+    resetTempStats(fallback);
+    enemies.push(fallback);
+  }
 
   return {
     ctx,
@@ -205,7 +282,7 @@ export function createCombatState(ctx, { encounterType, encounter, room }) {
     encounterType,
     encounter,
     player,
-    enemy,
+    enemies,
     soup,
     actionSlots: new Array(slotCount).fill(null),
     log: [],
@@ -218,9 +295,20 @@ export function createCombatState(ctx, { encounterType, encounter, room }) {
 }
 
 export function startCombat(combat) {
+  const enemyNames = getLivingEnemies(combat).map((enemy) => enemy.name);
+  let foeDescription = "A spectral foe";
+  if (enemyNames.length === 1) {
+    foeDescription = enemyNames[0];
+  } else if (enemyNames.length > 1) {
+    const head = enemyNames.slice(0, -1);
+    const tail = enemyNames[enemyNames.length - 1];
+    foeDescription = `${head.join(", ")} and ${tail}`;
+  }
   logCombat(
     combat,
-    `${combat.enemy.name} prepares to fight within ${combat.room?.name || "the chamber"}.`
+    `${foeDescription} prepare${enemyNames.length === 1 ? "s" : ""} to fight within ${
+      combat.room?.name || "the chamber"
+    }.`
   );
   updateCombatUI(combat);
   startPlayerTurn(combat);
@@ -426,7 +514,7 @@ function applyFacingEffects(combat) {
   }
 }
 
-export function getActionApCost(combat, action) {
+export function getActionApCost(combat, action, target = null) {
   if (!action || !action.cost) {
     return 0;
   }
@@ -443,7 +531,7 @@ export function getActionApCost(combat, action) {
   if (
     action.key === "breakthrough" &&
     combat.player.passives.breakthroughFatigueDiscount &&
-    hasStatus(combat.enemy, "fatigue")
+    hasStatus(target || getPrimaryEnemy(combat), "fatigue")
   ) {
     cost = Math.max(0, cost - combat.player.passives.breakthroughFatigueDiscount);
   }
@@ -469,7 +557,7 @@ export function getActionEssenceCost(combat, action) {
   return Math.max(0, cost);
 }
 
-export function performPlayerAction(combat, slotIndex) {
+export function performPlayerAction(combat, slotIndex, targetId = null) {
   if (combat.status !== "inProgress" || combat.turn !== "player") {
     return;
   }
@@ -485,7 +573,19 @@ export function performPlayerAction(combat, slotIndex) {
     logCombat(combat, "That action has been disabled in developer tools.");
     return;
   }
-  const apCost = getActionApCost(combat, action);
+  const requiresTarget = actionRequiresEnemyTarget(action);
+  let target = null;
+  if (requiresTarget) {
+    target = findEnemyById(combat, targetId) || getPrimaryEnemy(combat);
+    if (!target || target.essence <= 0) {
+      logCombat(combat, "There is no viable enemy to target.");
+      return;
+    }
+  } else {
+    target = findEnemyById(combat, targetId) || getPrimaryEnemy(combat);
+  }
+
+  const apCost = getActionApCost(combat, action, target);
   const essenceCost = getActionEssenceCost(combat, action);
 
   if (apCost > combat.player.ap) {
@@ -508,7 +608,7 @@ export function performPlayerAction(combat, slotIndex) {
     ? action.effect({
         combat,
         actor: combat.player,
-        target: combat.enemy,
+        target: target || getPrimaryEnemy(combat),
         slot,
         apCost,
       })
@@ -569,7 +669,7 @@ export function performPlayerAction(combat, slotIndex) {
     action.effect?.({
       combat,
       actor: combat.player,
-      target: combat.enemy,
+      target: target || getPrimaryEnemy(combat),
       slot,
       apCost,
     });
@@ -578,7 +678,7 @@ export function performPlayerAction(combat, slotIndex) {
 
   advanceSlotChain(combat, slot, action, slotIndex);
 
-  if (combat.enemy.essence <= 0) {
+  if (areAllEnemiesDefeated(combat)) {
     handleVictory(combat);
     return;
   }
@@ -677,40 +777,57 @@ function startEnemyTurn(combat) {
   combat.turn = "enemy";
   combat.player.flags = combat.player.flags || {};
   combat.player.flags.blockedDamageThisTurn = 0;
-  applyStartOfTurnStatuses(combat, combat.enemy, "enemy");
-  const pendingDaze =
-    getStatusStacks(combat.enemy, "dazed") + (combat.enemy.flags?.pendingDaze || 0);
-  if (pendingDaze > 0) {
-    combat.enemy.flags = combat.enemy.flags || {};
-    combat.enemy.flags.stalled = (combat.enemy.flags.stalled || 0) + pendingDaze;
-    removeStatus(combat.enemy, "dazed");
-    combat.enemy.flags.pendingDaze = 0;
-    logCombat(
-      combat,
-      `${combat.enemy.name} is dazed and loses ${pendingDaze} action${
-        pendingDaze === 1 ? "" : "s"
-      }.`
-    );
-  }
-  if (combat.enemy.essence <= 0) {
+
+  const activeEnemies = getLivingEnemies(combat);
+  if (activeEnemies.length === 0) {
     handleVictory(combat);
     return;
   }
-  if (combat.enemy.flags.stalled) {
-    combat.enemy.flags.stalled -= 1;
-    logCombat(combat, `${combat.enemy.name} hesitates and loses their turn.`);
-    endEnemyTurn(combat);
-    return;
+
+  for (const enemy of activeEnemies) {
+    if (combat.status !== "inProgress") {
+      break;
+    }
+    applyStartOfTurnStatuses(combat, enemy, "enemy");
+    if (enemy.essence <= 0) {
+      continue;
+    }
+    const pendingDaze =
+      getStatusStacks(enemy, "dazed") + (enemy.flags?.pendingDaze || 0);
+    if (pendingDaze > 0) {
+      enemy.flags = enemy.flags || {};
+      enemy.flags.stalled = (enemy.flags.stalled || 0) + pendingDaze;
+      removeStatus(enemy, "dazed");
+      enemy.flags.pendingDaze = 0;
+      logCombat(
+        combat,
+        `${enemy.name} is dazed and loses ${pendingDaze} action${
+          pendingDaze === 1 ? "" : "s"
+        }.`
+      );
+    }
+    if (enemy.essence <= 0) {
+      continue;
+    }
+    if (enemy.flags?.stalled) {
+      enemy.flags.stalled -= 1;
+      logCombat(combat, `${enemy.name} hesitates and loses their turn.`);
+      continue;
+    }
+    performEnemyMove(combat, enemy);
   }
-  performEnemyMove(combat);
+
   if (combat.status !== "inProgress") {
     return;
   }
+
   endEnemyTurn(combat);
 }
 
-function performEnemyMove(combat) {
-  const enemy = combat.enemy;
+function performEnemyMove(combat, enemy) {
+  if (!enemy || enemy.essence <= 0) {
+    return;
+  }
   if (!enemy.moves || enemy.moves.length === 0) {
     logCombat(combat, `${enemy.name} struggles to act.`);
     return;
@@ -767,7 +884,11 @@ function performEnemyMove(combat) {
 }
 
 function endEnemyTurn(combat) {
-  applyEndOfTurnStatuses(combat, combat.enemy);
+  if (Array.isArray(combat.enemies)) {
+    combat.enemies.forEach((enemy) => {
+      applyEndOfTurnStatuses(combat, enemy);
+    });
+  }
   combat.round += 1;
   combat.turn = "player";
   updateCombatUI(combat);
@@ -1799,7 +1920,14 @@ function handleVictory(combat) {
     return;
   }
   combat.status = "victory";
-  logCombat(combat, `${combat.enemy.name} collapses. You are victorious!`);
+  const enemyNames = Array.isArray(combat.enemies)
+    ? combat.enemies.map((enemy) => enemy?.name).filter(Boolean)
+    : [];
+  if (enemyNames.length === 1) {
+    logCombat(combat, `${enemyNames[0]} collapses. You are victorious!`);
+  } else {
+    logCombat(combat, "The last of your foes collapses. You are victorious!");
+  }
   if (combat.ctx?.state) {
     const encounterType =
       combat.encounterType ||
@@ -1876,6 +2004,11 @@ export function dealDamage(combat, actor, target, amount, options = {}) {
   const passives = combat.player?.passives || {};
   const actionDef = options.actionKey ? ACTION_DEFINITIONS[options.actionKey] : null;
   let actionApCost = options.apCost;
+  const panelGetter = combat.dom?.getPanelForCombatant;
+  const getPanelFor = (combatant) =>
+    typeof panelGetter === "function"
+      ? panelGetter(combatant)
+      : combat.dom?.[`${combatant.side}Panel`];
   if (
     typeof actionApCost === "undefined" &&
     actionDef &&
@@ -1918,7 +2051,7 @@ export function dealDamage(combat, actor, target, amount, options = {}) {
   if (target.statuses?.dodge) {
     target.statuses.dodge -= 1;
     logCombat(combat, `${target.name} dodges the attack.`);
-    showFloatingText(combat, combat.dom[`${target.side}Panel`], "Dodge", "info");
+    showFloatingText(combat, getPanelFor(target), "Dodge", "info");
     attackMissed = true;
   }
 
@@ -1951,13 +2084,14 @@ export function dealDamage(combat, actor, target, amount, options = {}) {
           const stacks = Math.max(1, passives.blockThresholdDazeStacks || 1);
           while (combat.player.flags.blockedDamageThisTurn >= threshold) {
             combat.player.flags.blockedDamageThisTurn -= threshold;
-            applyStatus(combat.enemy, "dazed", stacks, { duration: 1 });
-            combat.enemy.flags = combat.enemy.flags || {};
-            combat.enemy.flags.pendingDaze =
-              (combat.enemy.flags.pendingDaze || 0) + stacks;
+            if (actor && actor.side === "enemy") {
+              applyStatus(actor, "dazed", stacks, { duration: 1 });
+              actor.flags = actor.flags || {};
+              actor.flags.pendingDaze = (actor.flags.pendingDaze || 0) + stacks;
+            }
             logCombat(
               combat,
-              `Porcelain Rat startles ${combat.enemy.name}, applying Dazed (${stacks}).`
+              `Porcelain Rat startles ${actor?.name || "the foe"}, applying Dazed (${stacks}).`
             );
           }
         }
@@ -1984,7 +2118,7 @@ export function dealDamage(combat, actor, target, amount, options = {}) {
   target.essence = Math.max(0, target.essence - damage);
   showFloatingText(
     combat,
-    combat.dom[`${target.side}Panel`],
+    getPanelFor(target),
     `${damage}${isCrit ? "!" : ""}`,
     actor === combat.player ? "damage" : "enemy"
   );
@@ -2021,7 +2155,9 @@ export function dealDamage(combat, actor, target, amount, options = {}) {
 
   if (target.essence <= 0) {
     if (target.side === "enemy") {
-      handleVictory(combat);
+      if (areAllEnemiesDefeated(combat)) {
+        handleVictory(combat);
+      }
     } else {
       handleDefeat(combat);
     }
@@ -2051,9 +2187,14 @@ export function healCombatant(combat, combatant, amount) {
   combatant.essence = Math.min(combatant.maxEssence, combatant.essence + amount);
   if (combat && combat.log) {
     logCombat(combat, `${combatant.name} recovers ${amount} essence.`);
+    const panelGetter = combat.dom?.getPanelForCombatant;
+    const panel =
+      typeof panelGetter === "function"
+        ? panelGetter(combatant)
+        : combat.dom?.[`${combatant.side}Panel`];
     showFloatingText(
       combat,
-      combat.dom[`${combatant.side}Panel`],
+      panel,
       `+${amount}`,
       "heal"
     );
@@ -2115,7 +2256,7 @@ function applyStartOfTurnStatuses(combat, combatant, side) {
     logCombat(combat, `${combatant.name} bleeds for ${bleedDamage}.`);
     dealDamage(
       combat,
-      side === "enemy" ? combat.player : combat.enemy,
+      side === "enemy" ? combat.player : getPrimaryEnemy(combat),
       combatant,
       bleedDamage,
       { source: "Bleed" }
@@ -2242,4 +2383,7 @@ export {
   applyRecoveryRoomBenefits,
   createRewardsPanel,
   createMerchantPanel,
+  findEnemyById,
+  getLivingEnemies,
+  getPrimaryEnemy,
 };

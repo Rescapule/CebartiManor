@@ -28,23 +28,41 @@ function createOption(value, label) {
   return option;
 }
 
-function buildEncounterFromSprite(type, sprite) {
-  if (!sprite) {
+function buildEncounterFromSprite(type, sprites) {
+  const spriteList = Array.isArray(sprites)
+    ? sprites.filter(Boolean)
+    : sprites
+    ? [sprites]
+    : [];
+  if (spriteList.length === 0) {
     return null;
   }
-  const normalizedType = type || sprite.type || null;
+  const normalizedType = type || spriteList[0]?.type || null;
   const encounterType = normalizedType || "combat";
-  const kind =
-    encounterType === "merchant"
-      ? "merchant"
-      : encounterType === "boss"
-      ? "boss"
-      : "enemy";
+  const shouldAnimate = ANIMATED_ENCOUNTER_TYPES.has(encounterType);
+
+  if (encounterType === "combat" || encounterType === "elite" || encounterType === "boss") {
+    const enemies = spriteList.map((sprite) => ({ sprite }));
+    if (enemies.length === 0) {
+      return null;
+    }
+    return {
+      type: encounterType,
+      enemies,
+      sprite: enemies[0]?.sprite || null,
+      kind: encounterType === "boss" ? "boss" : "enemy",
+      animate: shouldAnimate,
+      enterDelay: 2000,
+    };
+  }
+
+  const sprite = spriteList[0];
+  const kind = encounterType === "merchant" ? "merchant" : "enemy";
   return {
     sprite,
     type: encounterType,
     kind,
-    animate: ANIMATED_ENCOUNTER_TYPES.has(encounterType),
+    animate: shouldAnimate,
     enterDelay: 2000,
   };
 }
@@ -246,7 +264,7 @@ export function createDevRoomBuilder(ctx, options = {}) {
 
   container.appendChild(panel);
 
-  let currentVariantSelect = null;
+  let currentVariantSelects = [];
 
   function updateLayoutDetails() {
     const selectedKey = layoutField.select.value;
@@ -266,7 +284,7 @@ export function createDevRoomBuilder(ctx, options = {}) {
   }
 
   function updateVariantField() {
-    currentVariantSelect = null;
+    currentVariantSelects = [];
     variantContainer.replaceChildren();
     const selectedType = typeField.select.value;
 
@@ -281,18 +299,24 @@ export function createDevRoomBuilder(ctx, options = {}) {
         );
         return;
       }
-      const { field, select } = createSelectField({
-        label: selectedType === "elite" ? "Elite Enemy" : "Enemy",
-        name: "enemy",
-        options: enemyOptions.map((enemy) => ({
-          value: enemy.key,
-          label: enemy.name,
-        })),
-        includeRandomOption: true,
-        randomLabel: "Random enemy",
-      });
-      variantContainer.appendChild(field);
-      currentVariantSelect = select;
+      const slotCount = selectedType === "elite" ? 2 : 1;
+      for (let i = 0; i < slotCount; i += 1) {
+        const { field, select } = createSelectField({
+          label:
+            slotCount === 1
+              ? "Enemy"
+              : `Enemy ${i + 1}`,
+          name: slotCount === 1 ? "enemy" : `enemy${i + 1}`,
+          options: enemyOptions.map((enemy) => ({
+            value: enemy.key,
+            label: enemy.name,
+          })),
+          includeRandomOption: true,
+          randomLabel: "Random enemy",
+        });
+        variantContainer.appendChild(field);
+        currentVariantSelects.push(select);
+      }
       return;
     }
 
@@ -307,18 +331,20 @@ export function createDevRoomBuilder(ctx, options = {}) {
         );
         return;
       }
-      const { field, select } = createSelectField({
-        label: "Boss",
-        name: "boss",
-        options: bossOptions.map((boss) => ({
-          value: boss.key,
-          label: boss.name,
-        })),
-        includeRandomOption: true,
-        randomLabel: "Random boss",
-      });
-      variantContainer.appendChild(field);
-      currentVariantSelect = select;
+      for (let i = 0; i < 3; i += 1) {
+        const { field, select } = createSelectField({
+          label: `Boss ${i + 1}`,
+          name: `boss${i + 1}`,
+          options: bossOptions.map((boss) => ({
+            value: boss.key,
+            label: boss.name,
+          })),
+          includeRandomOption: true,
+          randomLabel: "Random boss",
+        });
+        variantContainer.appendChild(field);
+        currentVariantSelects.push(select);
+      }
       return;
     }
 
@@ -344,7 +370,7 @@ export function createDevRoomBuilder(ctx, options = {}) {
         randomLabel: "Random merchant",
       });
       variantContainer.appendChild(field);
-      currentVariantSelect = select;
+      currentVariantSelects.push(select);
       return;
     }
 
@@ -370,7 +396,7 @@ export function createDevRoomBuilder(ctx, options = {}) {
         randomLabel: "Random event",
       });
       variantContainer.appendChild(field);
-      currentVariantSelect = select;
+      currentVariantSelects.push(select);
       return;
     }
 
@@ -436,24 +462,65 @@ export function createDevRoomBuilder(ctx, options = {}) {
     }
 
     if (selectedType === "event") {
-      const eventKey = currentVariantSelect?.value;
+      const eventKey = currentVariantSelects[0]?.value;
       if (eventKey) {
         optionsToUse.eventOptions = { eventKey };
       }
     } else {
-      const variantKey = currentVariantSelect?.value;
-      if (variantKey) {
-        let sprite = null;
-        if (selectedType === "combat" || selectedType === "elite") {
-          sprite = enemyMap.get(variantKey);
-        } else if (selectedType === "boss") {
-          sprite = bossMap.get(variantKey);
-        } else if (selectedType === "merchant") {
-          sprite = merchantMap.get(variantKey);
+      const selectionValues = currentVariantSelects
+        .map((select) => select?.value)
+        .filter((value) => typeof value === "string" && value);
+
+      const expectedCounts = {
+        combat: 1,
+        elite: 2,
+        boss: 3,
+        merchant: 1,
+      };
+
+      if (selectedType === "merchant" || selectedType === "combat") {
+        const expected = expectedCounts[selectedType] || 1;
+        if (selectionValues.length === expected) {
+          const map =
+            selectedType === "merchant" ? merchantMap : enemyMap;
+          const sprites = selectionValues
+            .map((value) => map.get(value))
+            .filter(Boolean);
+          const encounterOverride = buildEncounterFromSprite(
+            selectedType,
+            sprites
+          );
+          if (encounterOverride) {
+            optionsToUse.encounterOverride = encounterOverride;
+          }
         }
-        const encounterOverride = buildEncounterFromSprite(selectedType, sprite);
-        if (encounterOverride) {
-          optionsToUse.encounterOverride = encounterOverride;
+      } else if (selectedType === "elite") {
+        const expected = expectedCounts.elite;
+        if (selectionValues.length === expected) {
+          const sprites = selectionValues
+            .map((value) => enemyMap.get(value))
+            .filter(Boolean);
+          const encounterOverride = buildEncounterFromSprite(
+            selectedType,
+            sprites
+          );
+          if (encounterOverride) {
+            optionsToUse.encounterOverride = encounterOverride;
+          }
+        }
+      } else if (selectedType === "boss") {
+        const expected = expectedCounts.boss;
+        if (selectionValues.length === expected) {
+          const sprites = selectionValues
+            .map((value) => bossMap.get(value))
+            .filter(Boolean);
+          const encounterOverride = buildEncounterFromSprite(
+            selectedType,
+            sprites
+          );
+          if (encounterOverride) {
+            optionsToUse.encounterOverride = encounterOverride;
+          }
         }
       }
     }

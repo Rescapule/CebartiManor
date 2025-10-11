@@ -384,28 +384,42 @@ import { initializeDebugLogUI } from "./ui/debug-log.js";
     );
     let encounterElement = null;
 
-    if (encounter && encounter.sprite) {
-      const shouldAnimate = encounter.animate && !shouldReduceMotion();
-      const encounterCharacter = createCharacterElement(encounter.sprite, {
-        role: "encounter",
-        animate: shouldAnimate,
-      });
-      if (encounterCharacter) {
-        encounterElement = encounterCharacter.element;
-        encounterSide.appendChild(encounterElement);
+    const sprites = Array.isArray(encounter?.enemies)
+      ? encounter.enemies
+          .map((entry) => entry?.sprite)
+          .filter((sprite) => sprite && sprite.src)
+      : encounter?.sprite
+      ? [encounter.sprite]
+      : [];
+
+    if (sprites.length > 0) {
+      const shouldAnimate = encounter?.animate && !shouldReduceMotion();
+      sprites.forEach((sprite, index) => {
+        const encounterCharacter = createCharacterElement(sprite, {
+          role: "encounter",
+          animate: shouldAnimate,
+        });
+        if (!encounterCharacter) {
+          return;
+        }
+        const element = encounterCharacter.element;
+        encounterSide.appendChild(element);
+        if (!encounterElement) {
+          encounterElement = element;
+        }
         if (shouldAnimate) {
           window.setTimeout(() => {
-            if (encounterElement && encounterElement.isConnected) {
-              encounterElement.classList.add("is-visible");
+            if (element && element.isConnected) {
+              element.classList.add("is-visible");
             }
-          }, Math.max(0, Number(encounter.enterDelay) || 2000));
+          }, Math.max(0, Number(encounter.enterDelay) || 2000) + index * 150);
         }
+      });
+      if (sprites.length === 1) {
+        scene.classList.add("room-scene--solo");
       }
     } else {
       encounterSide.classList.add("room-scene__side--empty");
-    }
-
-    if (!encounterElement) {
       scene.classList.add("room-scene--solo");
     }
 

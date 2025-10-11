@@ -12,7 +12,7 @@ import {
   clearCodexView,
   updateState,
 } from "./state.js";
-import { sampleWithoutReplacement } from "./random.js";
+import { getRandomItem, sampleWithoutReplacement } from "./random.js";
 import {
   DEFAULT_PLAYER_STATS,
   MERCHANT_BASE_DRAFT_COST,
@@ -113,20 +113,37 @@ export function getEncounterForType(type) {
   if (!pool) {
     return null;
   }
+  const animatedTypes = new Set(["combat", "elite", "boss"]);
+  if (type === "combat" || type === "elite" || type === "boss") {
+    const desiredCount = type === "boss" ? 3 : type === "elite" ? 2 : 1;
+    const enemies = [];
+    for (let i = 0; i < desiredCount; i += 1) {
+      const sprite = getRandomItem(pool);
+      if (!sprite) {
+        break;
+      }
+      enemies.push({ sprite });
+    }
+    if (enemies.length === 0) {
+      return null;
+    }
+    return {
+      type,
+      enemies,
+      sprite: enemies[0]?.sprite || null,
+      kind: type === "boss" ? "boss" : "enemy",
+      animate: animatedTypes.has(type),
+      enterDelay: 2000,
+    };
+  }
   const [sprite] = sampleWithoutReplacement(pool, 1);
   if (!sprite) {
     return null;
   }
-  const animatedTypes = new Set(["combat", "elite", "boss"]);
   return {
     sprite,
     type,
-    kind:
-      type === "merchant"
-        ? "merchant"
-        : type === "boss"
-        ? "boss"
-        : "enemy",
+    kind: type === "merchant" ? "merchant" : "enemy",
     animate: animatedTypes.has(type),
     enterDelay: 2000,
   };
