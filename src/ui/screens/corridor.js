@@ -11,7 +11,7 @@ import {
   goToFoyer,
   goToRoom,
 } from "../../state/run.js";
-import { updateState } from "../../state/state.js";
+import { setEssenceValues, updateState } from "../../state/state.js";
 import { createElement } from "../dom.js";
 import { createDevRoomBuilder } from "../dev-room-builder.js";
 
@@ -260,13 +260,21 @@ const corridorScreen = {
         "Continue Down the Corridor"
       );
       continueButton.addEventListener("click", async () => {
+        const previousRefreshes = ctx.state.corridorRefreshes || 0;
+        const essenceLoss = 1 + previousRefreshes;
+        const currentEssence = ctx.state.playerEssence || 0;
+        const nextEssence = Math.max(0, currentEssence - essenceLoss);
+        setEssenceValues(nextEssence);
+        ctx.updateResources?.();
         const corridorRefreshes = (ctx.state.corridorRefreshes || 0) + 1;
         updateState({
           corridorRefreshes,
           lastRunScreen: "corridor",
         });
         await ctx.transitionTo("corridor", { refresh: true });
-        ctx.showToast("The corridor rearranges itself.");
+        ctx.showToast(
+          `The corridor rearranges itself, draining ${essenceLoss} essence.`
+        );
       });
       footer.appendChild(continueButton);
     }

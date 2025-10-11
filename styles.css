@@ -2317,6 +2317,24 @@ button {
   min-height: 220px;
 }
 
+.combatant-group {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.combatant-group--player {
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.combatant-group--enemies {
+  flex: 1;
+}
+
 .combatant-card {
   flex: 1;
   display: flex;
@@ -2328,6 +2346,34 @@ button {
   border: 1px solid rgba(214, 179, 112, 0.25);
   background: rgba(8, 4, 2, 0.55);
   text-align: center;
+}
+
+.combatant-card--defeated {
+  opacity: 0.55;
+  filter: saturate(40%);
+}
+
+.combatant-card--targetable {
+  border-color: rgba(255, 77, 79, 0.65);
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.35);
+  cursor: pointer;
+}
+
+.combatant-card--untargetable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.combat--targeting {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='8' fill='none' stroke='%23ff4d4f' stroke-width='2'/><line x1='16' y1='0' x2='16' y2='10' stroke='%23ff4d4f' stroke-width='2'/><line x1='16' y1='22' x2='16' y2='32' stroke='%23ff4d4f' stroke-width='2'/><line x1='0' y1='16' x2='10' y2='16' stroke='%23ff4d4f' stroke-width='2'/><line x1='22' y1='16' x2='32' y2='16' stroke='%23ff4d4f' stroke-width='2'/></svg>") 16 16, crosshair;
+}
+
+.combat--targeting .combatant-card--targetable {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><circle cx='16' cy='16' r='8' fill='none' stroke='%23ff4d4f' stroke-width='2'/><line x1='16' y1='0' x2='16' y2='10' stroke='%23ff4d4f' stroke-width='2'/><line x1='16' y1='22' x2='16' y2='32' stroke='%23ff4d4f' stroke-width='2'/><line x1='0' y1='16' x2='10' y2='16' stroke='%23ff4d4f' stroke-width='2'/><line x1='22' y1='16' x2='32' y2='16' stroke='%23ff4d4f' stroke-width='2'/></svg>") 16 16, pointer;
+}
+
+.action-button--targeting {
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.35);
 }
 
 .combatant-card__avatar {
